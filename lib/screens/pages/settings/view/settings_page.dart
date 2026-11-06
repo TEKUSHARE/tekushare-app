@@ -14,17 +14,40 @@ import 'package:tekushare/domain/entities/contact.dart';
 import 'package:tekushare/screens/pages/map/view/walk_route_page.dart';
 import 'package:tekushare/screens/pages/settings/view/linked_account_detail_page.dart';
 import 'package:tekushare/screens/pages/settings/view/phone_register_page.dart';
+import 'package:tekushare/screens/pages/settings/view/reauth_password_dialog.dart';
 import 'package:tekushare/screens/providers/account_link_provider.dart';
 import 'package:tekushare/screens/providers/app_providers.dart';
 import 'package:tekushare/screens/providers/auth_provider.dart';
 import 'package:tekushare/screens/providers/contact_provider.dart';
 import 'package:tekushare/screens/providers/walk_session_provider.dart';
+import 'package:tekushare/screens/providers/walk_timer_provider.dart';
 import 'package:tekushare/screens/pages/settings/viewmodel/settings_viewmodel.dart';
 import 'package:tekushare/screens/pages/spot/view/spot_list_page.dart';
 import 'package:tekushare/screens/widgets/common/app_bottom_nav.dart';
 import 'package:tekushare/screens/widgets/common/app_confirm_dialog.dart';
 
 /// 設定画面
+/// アカウント削除の後片付けとして、端末内の個人データと散歩の状態を消す。
+///
+/// 削除後はログイン状態の変化でユーザーに紐づく Notifier が破棄されるため、
+/// 削除前に取得した Notifier は使わず、[container] から現在のものを読み直す。
+@visibleForTesting
+Future<void> clearLocalDataAfterAccountDeletion(
+  ProviderContainer container,
+  String? uid,
+) async {
+  // SharedPreferences も消えるため、散歩中の状態・途中保存したルートも消える
+  if (uid != null) {
+    await container.read(localDataCleanerProvider).deleteUserData(uid);
+  }
+  // 端末内データを消す前の内容で作られた散歩セッションが残らないよう、読み直させる
+  container.invalidate(walkSessionProvider);
+  container.read(walkTimerProvider.notifier).reset();
+  await container
+      .read(notificationServiceProvider)
+      .cancelWalkOngoingNotification();
+}
+
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
@@ -77,6 +100,49 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  /// アカウントを削除する。最後のログインから時間が経っていて再認証を求められたら、
+  /// パスワードを入力してもらって再認証し、もう一度削除する。
+  /// 削除できたら true。失敗・キャンセル時はメッセージを出して false。
+  Future<bool> _deleteAccountWithReauth() async {
+    final auth = ref.read(authServiceProvider);
+    try {
+      await auth.deleteUser();
+      return true;
+    } on AuthException catch (e) {
+      if (e.code != 'requires-recent-login') {
+        _showDeleteError(authErrorMessage(e.code));
+        return false;
+      }
+    } catch (e) {
+      debugPrint('アカウントの削除に失敗しました: $e');
+      _showDeleteError(AppStrings.settingsDeleteAccountError);
+      return false;
+    }
+
+    if (!mounted) return false;
+    final password = await ReauthPasswordDialog.show(context);
+    if (password == null) return false;
+    try {
+      await auth.reauthenticateWithPassword(password);
+      await auth.deleteUser();
+      return true;
+    } on AuthException catch (e) {
+      _showDeleteError(authErrorMessage(e.code));
+      return false;
+    } catch (e) {
+      debugPrint('再認証後のアカウント削除に失敗しました: $e');
+      _showDeleteError(AppStrings.settingsDeleteAccountError);
+      return false;
+    }
+  }
+
+  void _showDeleteError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   void _showDeleteAccountConfirmDialog() {
     showDialog<void>(
       context: context,
@@ -85,12 +151,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         confirmLabel: AppStrings.settingsDeleteAccountConfirmButton,
         isDestructive: true,
         onConfirm: () async {
-          ref.read(walkSessionProvider.notifier).resetWalk();
+          // 削除に成功するとログイン状態が変わり、この画面も、ユーザーに紐づく
+          // プロバイダー（散歩セッションなど）も破棄・再生成される。
+          // 破棄されないアプリ全体のコンテナを先に取得し、後片付けはそれを通して行う
+          final container = ProviderScope.containerOf(context, listen: false);
           final uid = ref.read(authStateProvider).valueOrNull?.uid;
-          final cleaner = ref.read(localDataCleanerProvider);
-          await ref.read(authServiceProvider).deleteUser();
-          // アカウント削除に成功した後で端末内データを消す（再認証失敗時に消えないように）
-          if (uid != null) await cleaner.deleteUserData(uid);
+          final isDeleted = await _deleteAccountWithReauth();
+          if (!isDeleted) return;
+          // アカウント削除に成功した後で端末内データを消す（失敗時に記録が消えないように）
+          await clearLocalDataAfterAccountDeletion(container, uid);
           if (!mounted) return;
           Navigator.popUntil(context, (route) => route.isFirst);
         },

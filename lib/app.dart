@@ -11,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:tekushare/core/config/flavor.dart';
 import 'package:tekushare/core/constants/app_colors.dart';
 import 'package:tekushare/core/theme/app_sizing_theme.dart';
+import 'package:tekushare/infrastructure/fcm_token_registrar.dart';
 import 'package:tekushare/infrastructure/notification_service.dart';
 import 'package:tekushare/screens/pages/account_link/view/accept_invite_page.dart';
 import 'package:tekushare/screens/pages/auth/view/display_name_page.dart';
@@ -22,6 +23,7 @@ import 'package:tekushare/screens/providers/account_link_provider.dart';
 import 'package:tekushare/screens/providers/app_providers.dart';
 import 'package:tekushare/screens/providers/auth_provider.dart';
 import 'package:tekushare/screens/widgets/common/app_update_gate.dart';
+import 'package:tekushare/screens/widgets/walk/walk_monitor_host.dart';
 
 final routeObserver = RouteObserver<ModalRoute<void>>();
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -41,26 +43,33 @@ class _TekuShareAppState extends ConsumerState<TekuShareApp> {
   // 届くことがあるため、処理済みトークンを覚えて二重に画面を開かないようにする。
   final _handledTokens = <String>{};
 
-  String? _lastFcmSavedUid;
+  final _fcmTokenRegistrar = FcmTokenRegistrar(
+    getToken: FirebaseMessaging.instance.getToken,
+    saveToken: _saveFcmToken,
+  );
   StreamSubscription<String>? _tokenRefreshSub;
   StreamSubscription<RemoteMessage>? _foregroundMessageSub;
+  late final AppLifecycleListener _lifecycleListener;
 
-  Future<void> _saveFcmToken(String uid) async {
-    if (_lastFcmSavedUid == uid) return;
-    _lastFcmSavedUid = uid;
-    try {
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token == null) return;
-      final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
-      // トークンは本人のみ読めるサブコレクションに保存する
-      await userRef
-          .collection('private')
-          .doc('fcm')
-          .set({'fcmToken': token}, SetOptions(merge: true));
-      // 旧仕様で users/{uid} に保存していたトークンを削除する
-      await userRef
-          .set({'fcmToken': FieldValue.delete()}, SetOptions(merge: true));
-    } catch (_) {}
+  static Future<void> _saveFcmToken(String uid, String token) async {
+    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+    // トークンは本人のみ読めるサブコレクションに保存する
+    await userRef
+        .collection('private')
+        .doc('fcm')
+        .set({'fcmToken': token}, SetOptions(merge: true));
+    // 旧仕様で users/{uid} に保存していたトークンを削除する
+    await userRef
+        .set({'fcmToken': FieldValue.delete()}, SetOptions(merge: true));
+  }
+
+  /// 表示名の登録まで済んだログイン中ユーザーの UID（未ログインなら null）
+  String? get _registrableUid {
+    final user = ref.read(authStateProvider).valueOrNull;
+    if (user == null || user.displayName == null || user.displayName == '') {
+      return null;
+    }
+    return user.uid;
   }
 
   @override
@@ -72,11 +81,19 @@ class _TekuShareAppState extends ConsumerState<TekuShareApp> {
     _appLinks.uriLinkStream.listen(_handleUri);
     // トークンが更新されたら保存し直す
     _tokenRefreshSub = FirebaseMessaging.instance.onTokenRefresh.listen((_) {
-      final uid = ref.read(authStateProvider).valueOrNull?.uid;
+      final uid = _registrableUid;
       if (uid == null) return;
-      _lastFcmSavedUid = null;
-      _saveFcmToken(uid);
+      _fcmTokenRegistrar.markStale();
+      unawaited(_fcmTokenRegistrar.register(uid));
     });
+    // 保存に失敗したままなら、前面に戻ったときにも保存し直す
+    _lifecycleListener = AppLifecycleListener(
+      onResume: () {
+        final uid = _registrableUid;
+        if (uid == null) return;
+        unawaited(_fcmTokenRegistrar.retryNow(uid));
+      },
+    );
     _listenForegroundMessages();
   }
 
@@ -109,6 +126,8 @@ class _TekuShareAppState extends ConsumerState<TekuShareApp> {
   void dispose() {
     _tokenRefreshSub?.cancel();
     _foregroundMessageSub?.cancel();
+    _lifecycleListener.dispose();
+    _fcmTokenRegistrar.dispose();
     super.dispose();
   }
 
@@ -208,11 +227,11 @@ class _TekuShareAppState extends ConsumerState<TekuShareApp> {
     ref.listen<AsyncValue<dynamic>>(authStateProvider, (previous, next) {
       final user = next.valueOrNull;
       // サインアウト後に同じアカウントへ再ログインしても保存し直せるようにする
-      if (user == null) _lastFcmSavedUid = null;
+      if (user == null) _fcmTokenRegistrar.reset();
       if (user == null || user.displayName == null || user.displayName == '') {
         return;
       }
-      _saveFcmToken(user.uid);
+      unawaited(_fcmTokenRegistrar.register(user.uid));
       final token = ref.read(pendingInviteTokenProvider);
       if (token == null) return;
       ref.read(pendingInviteTokenProvider.notifier).state = null;
@@ -240,7 +259,13 @@ class _TekuShareAppState extends ConsumerState<TekuShareApp> {
           data: Theme.of(context).copyWith(
             extensions: [AppSizingTheme.fromScreenWidth(sw)],
           ),
-          child: AppUpdateGate(child: child!),
+          child: AppUpdateGate(
+            child: WalkMonitorHost(
+              navigatorKey: navigatorKey,
+              isEnabled: ready.hasValue && authState.valueOrNull != null,
+              child: child!,
+            ),
+          ),
         );
       },
       home: ready.when(

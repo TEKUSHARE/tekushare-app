@@ -30,6 +30,9 @@ class _FakeAuthService implements AuthService {
   Future<void> deleteUser() async {}
 
   @override
+  Future<void> reauthenticateWithPassword(String password) async {}
+
+  @override
   Future<void> sendPasswordResetEmail(String email) async {
     if (shouldThrow) throw const AuthException('user-not-found');
     sendCalled = true;

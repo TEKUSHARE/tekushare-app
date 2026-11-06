@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tekushare/domain/entities/walk_route.dart';
@@ -87,33 +90,39 @@ class WalkSessionNotifier extends StateNotifier<WalkSession> {
 
   Future<void> startWalk() async {
     final session = _startWalk.call();
-    await Future.wait([
-      _persist(session),
-      _walkStatusRepository.setWalking(),
-    ]);
+    await _persist(session);
     state = session;
+    _syncWalkingStatus(_walkStatusRepository.setWalking);
     await _notificationService?.showWalkOngoingNotification();
   }
 
   Future<void> endWalk(WalkRoute route) async {
     if (state.status != WalkStatus.walking) return;
     final finished = await _endWalk.call(state, route);
-    await Future.wait([
-      _persist(finished),
-      _walkStatusRepository.clearWalking(),
-    ]);
+    await _persist(finished);
     state = finished;
+    _syncWalkingStatus(_walkStatusRepository.clearWalking);
     await _notificationService?.cancelWalkOngoingNotification();
   }
 
   Future<void> resetWalk() async {
     const session = WalkSession(id: '', status: WalkStatus.idle);
-    await Future.wait([
-      _persist(session),
-      _walkStatusRepository.clearWalking(),
-    ]);
+    await _persist(session);
     state = session;
+    _syncWalkingStatus(_walkStatusRepository.clearWalking);
     await _notificationService?.cancelWalkOngoingNotification();
+  }
+
+  /// 連携相手向けの散歩中ステータスをサーバーへ同期する。
+  /// Firestore の書き込みはサーバーの応答まで完了しないため、待つとオフライン時に
+  /// 散歩の開始・終了が進まなくなる。ローカルの記録とは切り離し、完了を待たない
+  /// （オフライン中の書き込みは Firestore が保持し、通信が戻ると送られる）。
+  void _syncWalkingStatus(Future<void> Function() write) {
+    unawaited(
+      write().catchError((Object e) {
+        debugPrint('散歩中ステータスの同期に失敗しました: $e');
+      }),
+    );
   }
 }
 

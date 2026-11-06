@@ -223,6 +223,11 @@ abstract class AppStrings {
       'アカウントを消去しますか？\nこの操作は取り消せません。';
   static const settingsLogoutConfirmButton = 'ログアウト';
   static const settingsDeleteAccountConfirmButton = '消去する';
+  static const settingsReauthTitle = 'パスワードの確認';
+  static const settingsReauthMessage = '安全のため、アカウントを消去する前にもう一度パスワードを入力してください。';
+  static const settingsReauthPasswordLabel = 'パスワード';
+  static const settingsReauthConfirmButton = '確認して消去';
+  static const settingsDeleteAccountError = 'アカウントの消去に失敗しました。時間をおいて再度お試しください';
   static const settingsPrivacyPolicy = 'プライバシーポリシー';
   static const privacyPolicyUrl = 'https://tekushare.web.app/privacy.html';
 

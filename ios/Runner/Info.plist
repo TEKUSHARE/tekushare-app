@@ -36,6 +36,9 @@
 		<string>スポットに添付する写真を選ぶために写真ライブラリを使用します。</string>
 		<key>ITSAppUsesNonExemptEncryption</key>
 		<false/>
+		<!-- ディープリンクは app_links で処理するため、Flutter 標準の処理を無効にする -->
+		<key>FlutterDeepLinkingEnabled</key>
+		<false/>
 		<key>UIBackgroundModes</key>
 		<array>
 			<string>location</string>

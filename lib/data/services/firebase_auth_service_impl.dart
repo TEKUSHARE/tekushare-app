@@ -124,7 +124,29 @@ class FirebaseAuthServiceImpl implements AuthService {
   Future<void> deleteUser() async {
     final user = _auth.currentUser;
     if (user == null) return;
-    await user.delete();
+    try {
+      await user.delete();
+    } on FirebaseAuthException catch (e) {
+      // 最後のログインから時間が経っていると requires-recent-login になる。
+      // 呼び出し側で再認証（reauthenticateWithPassword）へ誘導する
+      throw AuthException(e.code);
+    }
+  }
+
+  @override
+  Future<void> reauthenticateWithPassword(String password) async {
+    final user = _auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null) {
+      throw const AuthException('user-not-found');
+    }
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: password),
+      );
+    } on FirebaseAuthException catch (e) {
+      throw AuthException(e.code);
+    }
   }
 
   @override

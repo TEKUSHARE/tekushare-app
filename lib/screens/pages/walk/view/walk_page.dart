@@ -13,7 +13,6 @@ import 'package:tekushare/core/config/flavor.dart';
 import 'package:tekushare/core/constants/app_colors.dart';
 import 'package:tekushare/core/constants/app_spacing.dart';
 import 'package:tekushare/core/constants/app_strings.dart';
-import 'package:tekushare/core/constants/app_text_style.dart';
 import 'package:tekushare/core/constants/map_constants.dart';
 import 'package:tekushare/core/theme/app_sizing_theme.dart';
 import 'package:tekushare/screens/pages/map/view/walk_route_page.dart';
@@ -22,13 +21,8 @@ import 'package:tekushare/screens/pages/settings/viewmodel/settings_viewmodel.da
 import 'package:tekushare/screens/pages/spot/view/spot_list_page.dart';
 import 'package:tekushare/screens/pages/spot/view/want_to_go_page.dart';
 import 'package:tekushare/screens/pages/walk/view/end_walk_page.dart';
-import 'package:tekushare/domain/entities/walk_route.dart';
 import 'package:tekushare/screens/providers/app_providers.dart';
-import 'package:tekushare/screens/providers/walk_history_provider.dart';
-import 'package:tekushare/screens/providers/walk_routes_provider.dart';
 import 'package:tekushare/screens/providers/walk_session_provider.dart';
-import 'package:tekushare/screens/providers/auth_provider.dart';
-import 'package:tekushare/screens/providers/contact_provider.dart';
 import 'package:tekushare/screens/providers/location_provider.dart';
 import 'package:tekushare/screens/providers/spot_provider.dart';
 import 'package:tekushare/screens/providers/walk_timer_provider.dart';
@@ -51,143 +45,20 @@ class _WalkPageState extends ConsumerState<WalkPage> {
   final _mapController = MapController();
   final _photoMarkers = <({LatLng point, String imagePath})>[];
   LatLng? _currentPosition;
-  LatLng? _lastMovedPosition;
   double? _currentHeading;
   bool _mapControllerAttached = false;
 
-  Timer? _tickTimer;
+  // タイマー・見守り（不活動の検知）・長時間散歩の監視は、画面を移っても止まらないよう
+  // WalkMonitor（walkMonitorProvider）が行う
   Timer? _gpsTimeoutTimer;
-  bool _isFiringNotifications = false;
 
   @override
   void initState() {
     super.initState();
-    // プロバイダーへの書き込みはビルド完了後に行う（Riverpod の制約）
-    Future.microtask(() {
-      if (!mounted) return;
-      final settings = ref.read(settingsViewModelProvider);
-      ref.read(walkTimerProvider.notifier).initializeIfNeeded(
-            timerEnabled: settings.timerEnabled,
-            timerMinutes: settings.timerMinutes,
-            timerRoundTrip: settings.timerRoundTrip,
-            inactivityEnabled: settings.inactivityEnabled,
-            inactivityMinutes: settings.inactivityMinutes,
-          );
-    });
-    _tickTimer = Timer.periodic(const Duration(seconds: 1), _onTick);
     _gpsTimeoutTimer = Timer(
       const Duration(seconds: _gpsTimeoutSeconds),
       _onGpsTimeout,
     );
-  }
-
-  void _onTick(Timer _) {
-    if (!mounted) return;
-    ref.read(walkTimerProvider.notifier).tick();
-    _fireNotificationsIfNeeded();
-  }
-
-  Future<void> _fireNotificationsIfNeeded() async {
-    if (_isFiringNotifications) return;
-    _isFiringNotifications = true;
-    try {
-      await _doFireNotifications();
-    } finally {
-      _isFiringNotifications = false;
-    }
-  }
-
-  Future<void> _doFireNotifications() async {
-    final svc = ref.read(notificationServiceProvider);
-    final ts = ref.read(walkTimerProvider);
-    // 往復タイマーの折り返し通知（全体の半分の時間になったとき）
-    final midpoint = ts.midpointSeconds;
-    if (midpoint != null &&
-        ts.turnSecondsLeft == midpoint &&
-        !ts.midpointFired) {
-      ref.read(walkTimerProvider.notifier).markMidpointFired();
-      await svc.showRoundTripNotification();
-    }
-    if (ts.turnSecondsLeft == 0 && !ts.turnFired) {
-      ref.read(walkTimerProvider.notifier).markTurnFired();
-      await svc.showTurnaroundNotification();
-      _showTimerFinishedAlert();
-    }
-    if (ts.inactSecondsLeft == 0 && !ts.inactFired) {
-      ref.read(walkTimerProvider.notifier).markInactFired();
-      await svc.showInactivityNotification();
-      _showSafetyConfirmDialog();
-    }
-
-    // 長時間散歩の監視（2h/4h/6h リマインド、7.5h 警告、8h 自動終了）
-    final startedAt = ref.read(walkSessionProvider).startedAt;
-    if (startedAt != null) {
-      final elapsed = DateTime.now().difference(startedAt);
-      for (final hour in [2, 4, 6]) {
-        if (elapsed.inHours >= hour && !ts.reminderHoursFired.contains(hour)) {
-          ref.read(walkTimerProvider.notifier).markReminderFired(hour);
-          await svc.showWalkReminderNotification(hour);
-        }
-      }
-      if (elapsed.inSeconds >= 7 * 3600 + 30 * 60 && !ts.autoEndWarningFired) {
-        ref.read(walkTimerProvider.notifier).markAutoEndWarningFired();
-        await svc.showWalkAutoEndWarningNotification();
-      }
-      if (elapsed.inSeconds >= 8 * 3600 && !ts.autoEndFired) {
-        ref.read(walkTimerProvider.notifier).markAutoEndFired();
-        await _autoEndWalk();
-      }
-    }
-  }
-
-  Future<void> _autoEndWalk() async {
-    if (!mounted) return;
-    final session = ref.read(walkSessionProvider);
-    final trackPoints = ref.read(walkTrackPointsProvider);
-    final route = WalkRoute(
-      id: session.id,
-      walkSessionId: session.id,
-      points: trackPoints,
-      createdAt: DateTime.now(),
-    );
-    await ref.read(walkSessionProvider.notifier).endWalk(route);
-    ref.invalidate(walkHistoryProvider);
-    ref.invalidate(walkRoutesProvider);
-    ref.read(walkSessionProvider.notifier).resetWalk();
-    ref.read(walkTimerProvider.notifier).reset();
-    await ref.read(notificationServiceProvider).showWalkAutoEndNotification();
-  }
-
-  void _showSafetyConfirmDialog() {
-    if (!mounted) return;
-    final settings = ref.read(settingsViewModelProvider);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => _SafetyConfirmDialog(
-        onSafe: () => ref
-            .read(walkTimerProvider.notifier)
-            .resetInact(settings.inactivityMinutes),
-        onTimeout: _sendSafetyAlert,
-      ),
-    );
-  }
-
-  /// 通知先（SMS・Android のみ）と連携相手（プッシュ通知）へ安否通知を送り、
-  /// 誰か一人にでも届いたかを返す
-  Future<bool> _sendSafetyAlert() async {
-    final contacts = ref.read(contactProvider).valueOrNull ?? [];
-    final senderName =
-        ref.read(authStateProvider).valueOrNull?.displayName ?? '';
-    final result = await ref.read(sendSafetyAlertProvider)(
-      contacts: contacts,
-      senderName: senderName,
-    );
-    // 届いていないのに「送信しました」と表示しないよう、届いたときだけ通知する
-    if (result.isDelivered) {
-      await ref.read(notificationServiceProvider).showSmsSentNotification();
-    }
-    return result.isDelivered;
   }
 
   void _resetTimer() {
@@ -195,36 +66,8 @@ class _WalkPageState extends ConsumerState<WalkPage> {
     ref.read(walkTimerProvider.notifier).resetTurn(settings.timerMinutes);
   }
 
-  void _showTimerFinishedAlert() {
-    if (!mounted) return;
-    final ts = ref.read(walkTimerProvider);
-    if (ts.turnAlertShown) return;
-    ref.read(walkTimerProvider.notifier).markTurnAlertShown();
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text(AppStrings.timerFinishedTitle),
-        content: const Text(AppStrings.timerFinishedMessage),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _resetTimer();
-            },
-            child: const Text(AppStrings.timerReset),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text(AppStrings.closeButton),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   void dispose() {
-    _tickTimer?.cancel();
     _gpsTimeoutTimer?.cancel();
     _mapController.dispose();
     super.dispose();
@@ -303,20 +146,6 @@ class _WalkPageState extends ConsumerState<WalkPage> {
           // heading < 0 は「取得不可」を示すので最後の有効値を維持する
           if (pos.heading >= 0) _currentHeading = pos.heading;
         });
-        // 前回位置から一定距離以上動いた場合のみ不活動タイマーをリセット
-        if (ref.read(walkTimerProvider).inactSecondsLeft != null) {
-          final prev = _lastMovedPosition;
-          final moved = prev == null ||
-              const Distance().as(LengthUnit.Meter, prev, point) >=
-                  MapConstants.inactivityMinMovementMeters;
-          if (moved) {
-            _lastMovedPosition = point;
-            final settings = ref.read(settingsViewModelProvider);
-            ref
-                .read(walkTimerProvider.notifier)
-                .resetInact(settings.inactivityMinutes);
-          }
-        }
         // MapController が準備済みの場合のみ move()
         if (_mapControllerAttached) {
           _mapController.move(point, _mapController.camera.zoom);
@@ -822,110 +651,6 @@ class _WalkActionButton extends StatelessWidget {
                   fontWeight: FontWeight.w500,
                 ),
               ),
-      ),
-    );
-  }
-}
-
-// ──────────────────────────────────────────
-// 安否確認ダイアログ（カウントダウン付き）
-// ──────────────────────────────────────────
-
-const _safetyGracePeriodSeconds = 60;
-
-class _SafetyConfirmDialog extends StatefulWidget {
-  const _SafetyConfirmDialog({
-    required this.onSafe,
-    required this.onTimeout,
-  });
-
-  final VoidCallback onSafe;
-
-  /// 猶予時間が過ぎたときに安否通知を送り、届いたかどうかを返す
-  final Future<bool> Function() onTimeout;
-
-  @override
-  State<_SafetyConfirmDialog> createState() => _SafetyConfirmDialogState();
-}
-
-class _SafetyConfirmDialogState extends State<_SafetyConfirmDialog> {
-  late int _secondsLeft;
-  Timer? _timer;
-  // 猶予時間が過ぎて送信を終えたら、送信結果（届いたか）を入れる
-  bool? _isAlertDelivered;
-
-  @override
-  void initState() {
-    super.initState();
-    _secondsLeft = _safetyGracePeriodSeconds;
-    _timer = Timer.periodic(const Duration(seconds: 1), _onTick);
-  }
-
-  Future<void> _onTick(Timer _) async {
-    if (!mounted) return;
-    setState(() => _secondsLeft--);
-    if (_secondsLeft <= 0) {
-      _timer?.cancel();
-      final isDelivered = await widget.onTimeout();
-      if (!mounted) return;
-      setState(() => _isAlertDelivered = isDelivered);
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      child: AlertDialog(
-        title: const Text(AppStrings.safetyConfirmTitle),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              switch (_isAlertDelivered) {
-                null when _secondsLeft <= 0 =>
-                  AppStrings.safetyAlertSendingBody,
-                null => AppStrings.safetyConfirmBody,
-                true => AppStrings.safetyAlertSentBody,
-                false => AppStrings.safetyAlertFailedBody,
-              },
-            ),
-            if (_isAlertDelivered == null && _secondsLeft > 0) ...[
-              const SizedBox(height: AppSpacing.x2l),
-              Text(
-                '$_secondsLeft秒',
-                style: const TextStyle(
-                  fontSize: AppTextStyle.x3l,
-                  fontWeight: AppTextStyle.bold,
-                  color: AppColors.error,
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () {
-                _timer?.cancel();
-                Navigator.of(context).pop();
-                widget.onSafe();
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                minimumSize: const Size(double.infinity, 48),
-              ),
-              child: const Text(AppStrings.safetyOk),
-            ),
-          ),
-        ],
       ),
     );
   }

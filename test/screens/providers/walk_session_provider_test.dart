@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
@@ -9,10 +12,27 @@ import 'package:tekushare/domain/entities/walk_session.dart';
 import 'package:tekushare/domain/repositories/route_repository.dart';
 import 'package:tekushare/domain/repositories/walk_session_repository.dart';
 import 'package:tekushare/domain/repositories/walk_status_repository.dart';
+import 'package:tekushare/infrastructure/notification_service.dart';
 import 'package:tekushare/screens/providers/app_providers.dart';
 import 'package:tekushare/screens/providers/walk_session_provider.dart';
 
 import 'walk_session_provider_test.mocks.dart';
+
+/// 通知プラグインはテスト環境で初期化されないため、何もしない偽物に差し替える
+class _FakeNotificationsPlugin extends Fake
+    implements FlutterLocalNotificationsPlugin {
+  @override
+  Future<void> show({
+    required int id,
+    String? title,
+    String? body,
+    NotificationDetails? notificationDetails,
+    String? payload,
+  }) async {}
+
+  @override
+  Future<void> cancel({required int id, String? tag}) async {}
+}
 
 @GenerateMocks([WalkSessionRepository, RouteRepository, WalkStatusRepository])
 void main() {
@@ -43,6 +63,9 @@ void main() {
         walkSessionRepositoryProvider.overrideWithValue(mockSessionRepo),
         routeRepositoryProvider.overrideWithValue(mockRouteRepo),
         walkStatusRepositoryProvider.overrideWithValue(mockWalkStatusRepo),
+        notificationServiceProvider.overrideWithValue(
+          NotificationService.forTest(_FakeNotificationsPlugin()),
+        ),
       ],
     );
     // sharedPrefsProvider (FutureProvider) を先に解決しておく
@@ -107,6 +130,36 @@ void main() {
       await container.read(walkSessionProvider.notifier).endWalk(makeRoute());
 
       verify(mockRouteRepo.saveRoute(any)).called(1);
+    });
+
+    test('オフラインでサーバー同期が終わらなくても散歩を開始・終了できる', () async {
+      // Firestore はオフライン時、サーバーの応答まで書き込みが完了しない
+      when(mockWalkStatusRepo.setWalking())
+          .thenAnswer((_) => Completer<void>().future);
+      when(mockWalkStatusRepo.clearWalking())
+          .thenAnswer((_) => Completer<void>().future);
+      final container = await makeContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(walkSessionProvider.notifier);
+
+      await notifier.startWalk().timeout(const Duration(seconds: 1));
+      expect(container.read(walkSessionProvider).status, WalkStatus.walking);
+
+      await notifier.endWalk(makeRoute()).timeout(const Duration(seconds: 1));
+      expect(container.read(walkSessionProvider).status, WalkStatus.finished);
+    });
+
+    test('サーバー同期が失敗しても散歩の終了は完了する', () async {
+      when(mockWalkStatusRepo.clearWalking())
+          .thenAnswer((_) => Future<void>.error(Exception('not-found')));
+      final container = await makeContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(walkSessionProvider.notifier);
+
+      await notifier.startWalk();
+      await notifier.endWalk(makeRoute());
+
+      expect(container.read(walkSessionProvider).status, WalkStatus.finished);
     });
 
     test('idle 状態で endWalk を呼んでもリポジトリが呼ばれない', () async {
