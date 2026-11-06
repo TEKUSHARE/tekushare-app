@@ -60,11 +60,11 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDTgxYc_oiALppqXOLdUQWY9BlL6fE5Cdk',
-    appId: '1:607979997790:ios:ee2d0ae68448b7155742cf',
+    appId: '1:607979997790:ios:e0bfb99dbdad7a8f5742cf',
     messagingSenderId: '607979997790',
     projectId: 'tekushare',
     storageBucket: 'tekushare.firebasestorage.app',
-    iosBundleId: 'com.example.tekushare',
+    iosBundleId: 'com.tekushare.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(

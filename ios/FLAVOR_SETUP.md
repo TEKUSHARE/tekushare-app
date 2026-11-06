@@ -19,7 +19,7 @@
   #include "<Dev|Stg|Prod>.xcconfig"     ← BUNDLE_ID_SUFFIX / BUNDLE_DISPLAY_NAME
   ```
 - `Runner` ターゲットの `PRODUCT_BUNDLE_IDENTIFIER` は flavor 用 Configuration でのみ
-  `com.example.tekushare$(BUNDLE_ID_SUFFIX)` に上書き済み（Debug/Release/Profile 標準側は無変更）。
+  `com.tekushare.app$(BUNDLE_ID_SUFFIX)` に上書き済み（Debug/Release/Profile 標準側は無変更）。
 - `ios/Podfile` の `project 'Runner', {...}` に `Debug-dev` 等 9 configuration すべてを
   `:debug` / `:release` にマッピング済み（CocoaPods が per-flavor の xcconfig を生成するために必須）。
 - `ios/Podfile` の `platform :ios` を `13.0` → `15.0` に変更済み
@@ -34,7 +34,7 @@ cd ios
 xcodebuild -list -project Runner.xcodeproj   # Schemes に dev/stg/prod があるか
 xcodebuild -showBuildSettings -workspace Runner.xcworkspace -scheme dev -configuration Debug-dev \
   | grep -i "PRODUCT_BUNDLE_IDENTIFIER\|BUNDLE_DISPLAY_NAME"
-# => com.example.tekushare.dev / てくしぇあ Dev になっていればOK
+# => com.tekushare.app.dev / てくしぇあ Dev になっていればOK
 ```
 
 ```bash
@@ -131,7 +131,7 @@ bases   = %w[Debug Release Profile]
 # XCConfigurationList に対して、既存の Debug/Release/Profile を複製し
 # 新しい名前（例: "Debug-dev"）を付ける。Runner ターゲット分だけ
 # base_configuration_reference を対応する ios/Flutter/<name>.xcconfig に差し替え、
-# PRODUCT_BUNDLE_IDENTIFIER を 'com.example.tekushare$(BUNDLE_ID_SUFFIX)' に上書きする。
+# PRODUCT_BUNDLE_IDENTIFIER を 'com.tekushare.app$(BUNDLE_ID_SUFFIX)' に上書きする。
 ```
 
 Scheme は既存の `Runner.xcscheme` を複製し、`buildConfiguration="Debug"` 等の属性を

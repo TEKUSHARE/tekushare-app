@@ -1441,7 +1441,7 @@ class _FullScreenRouteMapPageState extends State<_FullScreenRouteMapPage> {
         children: [
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.example.tekushare',
+            userAgentPackageName: AppConfig.packageName,
           ),
           PolylineLayer(
             polylines: [
