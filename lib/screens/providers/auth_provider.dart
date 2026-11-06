@@ -58,7 +58,14 @@ abstract interface class AuthService {
   Future<void> signInWithEmail(String email, String password);
   Future<void> setDisplayName(String name);
   Future<void> signOut();
+
+  /// アカウントを削除する。最後のログインから時間が経っていると
+  /// `AuthException('requires-recent-login')` を投げるので、
+  /// [reauthenticateWithPassword] で再認証してからやり直す
   Future<void> deleteUser();
+
+  /// 現在のユーザーをパスワードで再認証する（アカウント削除など重要な操作の前に必要）
+  Future<void> reauthenticateWithPassword(String password);
   Future<void> sendPasswordResetEmail(String email);
   Future<void> sendEmailVerification();
   Future<void> reloadCurrentUser();
@@ -77,6 +84,9 @@ final authServiceProvider = Provider<AuthService>((ref) {
 
 // ── Email auth notifier ───────────────────────────────────────────────────────
 
+/// 認証エラーのコードを画面に出すメッセージに変換する
+String authErrorMessage(String code) => _mapErrorCode(code);
+
 String _mapErrorCode(String code) {
   return switch (code) {
     'email-already-in-use' => 'このメールアドレスはすでに使われています',
@@ -87,6 +97,7 @@ String _mapErrorCode(String code) {
     'invalid-credential' => 'メールアドレスまたはパスワードが間違っています',
     'too-many-requests' => 'しばらく時間をおいてから再度お試しください',
     'network-request-failed' => 'ネットワークエラーが発生しました。接続を確認してください',
+    'requires-recent-login' => '安全のため、もう一度パスワードを入力してください',
     'email-not-verified' =>
       'メールアドレスの確認が完了していません。\nお届けしたメール内のリンクをクリックしてからログインしてください。',
     _ => '認証エラーが発生しました（$code）',

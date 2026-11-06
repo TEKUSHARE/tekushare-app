@@ -113,8 +113,17 @@ class _AppConfirmDialogState extends State<AppConfirmDialog> {
                           ? null
                           : () async {
                               setState(() => _processing = true);
-                              await widget.onConfirm();
-                              if (mounted) setState(() => _processing = false);
+                              try {
+                                await widget.onConfirm();
+                              } catch (e) {
+                                // エラー表示は呼び出し側の責務。ここでは操作不能にならないことだけを保証する
+                                debugPrint('確認ダイアログの処理で例外が発生しました: $e');
+                              } finally {
+                                // 失敗しても処理中のまま操作できなくならないよう、必ず戻す
+                                if (mounted) {
+                                  setState(() => _processing = false);
+                                }
+                              }
                             },
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(

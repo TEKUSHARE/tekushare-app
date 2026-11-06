@@ -19,6 +19,7 @@ import 'package:tekushare/domain/usecases/spot/get_spots.dart';
 import 'package:tekushare/domain/usecases/spot/save_spot.dart';
 import 'package:tekushare/domain/usecases/spot/update_spot_status.dart';
 import 'package:tekushare/domain/usecases/walk/end_walk.dart';
+import 'package:tekushare/infrastructure/local_data_cleaner.dart';
 import 'package:tekushare/screens/pages/map/view/walk_route_page.dart';
 import 'package:tekushare/screens/pages/settings/view/phone_register_page.dart';
 import 'package:tekushare/screens/pages/settings/view/settings_page.dart';
@@ -35,6 +36,13 @@ import 'package:tekushare/screens/widgets/common/app_bottom_nav.dart';
 class _FakeAuthService implements AuthService {
   bool signedOut = false;
   bool deletedUser = false;
+
+  /// deleteUser を呼ぶたびに先頭から取り出して投げるエラーコード（null なら成功）
+  final deleteErrorCodes = <String?>[];
+
+  /// reauthenticateWithPassword で投げるエラーコード（null なら成功）
+  String? reauthErrorCode;
+  String? reauthPassword;
 
   @override
   Stream<AuthUser?> watchAuthState() => const Stream.empty();
@@ -53,7 +61,17 @@ class _FakeAuthService implements AuthService {
   Future<void> signOut() async => signedOut = true;
 
   @override
-  Future<void> deleteUser() async => deletedUser = true;
+  Future<void> deleteUser() async {
+    final code = deleteErrorCodes.isEmpty ? null : deleteErrorCodes.removeAt(0);
+    if (code != null) throw AuthException(code);
+    deletedUser = true;
+  }
+
+  @override
+  Future<void> reauthenticateWithPassword(String password) async {
+    reauthPassword = password;
+    if (reauthErrorCode != null) throw AuthException(reauthErrorCode!);
+  }
 
   @override
   Future<void> sendPasswordResetEmail(String email) async {}
@@ -199,6 +217,14 @@ final _spotOverride = spotProvider.overrideWith(
     deleteSpot: const _FakeDeleteSpot(),
   ),
 );
+
+/// 端末内データの削除（ObjectBox が必要）を記録だけする偽物
+class _FakeLocalDataCleaner extends Fake implements LocalDataCleaner {
+  final deletedUids = <String>[];
+
+  @override
+  Future<void> deleteUserData(String uid) async => deletedUids.add(uid);
+}
 
 final _contactOverride =
     contactProvider.overrideWith((ref) => Stream.value([]));
@@ -770,6 +796,7 @@ void main() {
           overrides: [
             _contactOverride,
             authServiceProvider.overrideWithValue(fakeAuth),
+            localDataCleanerProvider.overrideWithValue(_FakeLocalDataCleaner()),
             walkSessionProvider.overrideWith(
               (ref) => WalkSessionNotifier(
                 endWalk: const EndWalk(
@@ -818,6 +845,7 @@ void main() {
           overrides: [
             _contactOverride,
             authServiceProvider.overrideWithValue(fakeAuth),
+            localDataCleanerProvider.overrideWithValue(_FakeLocalDataCleaner()),
             walkSessionProvider.overrideWith(
               (ref) => WalkSessionNotifier(
                 endWalk: const EndWalk(
@@ -867,6 +895,7 @@ void main() {
           overrides: [
             _contactOverride,
             authServiceProvider.overrideWithValue(fakeAuth),
+            localDataCleanerProvider.overrideWithValue(_FakeLocalDataCleaner()),
             walkSessionProvider.overrideWith(
               (ref) => WalkSessionNotifier(
                 endWalk: const EndWalk(
@@ -919,6 +948,7 @@ void main() {
           overrides: [
             _contactOverride,
             authServiceProvider.overrideWithValue(fakeAuth),
+            localDataCleanerProvider.overrideWithValue(_FakeLocalDataCleaner()),
             walkSessionProvider.overrideWith(
               (ref) => WalkSessionNotifier(
                 endWalk: const EndWalk(
@@ -968,6 +998,7 @@ void main() {
           overrides: [
             _contactOverride,
             authServiceProvider.overrideWithValue(fakeAuth),
+            localDataCleanerProvider.overrideWithValue(_FakeLocalDataCleaner()),
             walkSessionProvider.overrideWith(
               (ref) => WalkSessionNotifier(
                 endWalk: const EndWalk(
@@ -1018,6 +1049,7 @@ void main() {
           overrides: [
             _contactOverride,
             authServiceProvider.overrideWithValue(fakeAuth),
+            localDataCleanerProvider.overrideWithValue(_FakeLocalDataCleaner()),
             walkSessionProvider.overrideWith(
               (ref) => WalkSessionNotifier(
                 endWalk: const EndWalk(
@@ -1129,6 +1161,136 @@ void main() {
         find.text(AppStrings.settingsInactivityPushNote(2)),
         findsOneWidget,
       );
+    });
+  });
+
+  group('SettingsPage アカウント消去の再認証', () {
+    late SharedPreferences prefs;
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      prefs = await SharedPreferences.getInstance();
+    });
+
+    Future<_FakeLocalDataCleaner> pumpAndConfirmDelete(
+      WidgetTester tester,
+      _FakeAuthService fakeAuth,
+    ) async {
+      tester.view.physicalSize = const Size(1170, 3000);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final cleaner = _FakeLocalDataCleaner();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            _contactOverride,
+            authServiceProvider.overrideWithValue(fakeAuth),
+            authStateProvider.overrideWith(
+              (ref) => Stream.value(
+                const AuthUser(uid: 'alice', displayName: 'A'),
+              ),
+            ),
+            localDataCleanerProvider.overrideWithValue(cleaner),
+            walkSessionProvider.overrideWith(
+              (ref) => WalkSessionNotifier(
+                endWalk: const EndWalk(
+                  _FakeWalkSessionRepository(),
+                  _FakeWalkRouteRepository(),
+                ),
+                prefs: prefs,
+                walkStatusRepository: _FakeWalkStatusRepository(),
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            builder: (context, child) {
+              final sw = MediaQuery.sizeOf(context).width;
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  extensions: [AppSizingTheme.fromScreenWidth(sw)],
+                ),
+                child: child!,
+              );
+            },
+            home: const SettingsPage(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.ensureVisible(find.text(AppStrings.settingsDeleteAccount));
+      await tester.tap(find.text(AppStrings.settingsDeleteAccount));
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.text(AppStrings.settingsDeleteAccountConfirmButton));
+      await tester.pumpAndSettle();
+      return cleaner;
+    }
+
+    testWidgets('再認証を求められたらパスワードを入力し、再認証してから消去する', (tester) async {
+      final fakeAuth = _FakeAuthService()
+        ..deleteErrorCodes.add('requires-recent-login');
+
+      final cleaner = await pumpAndConfirmDelete(tester, fakeAuth);
+      expect(find.text(AppStrings.settingsReauthTitle), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'secret');
+      await tester.tap(find.text(AppStrings.settingsReauthConfirmButton));
+      await tester.pumpAndSettle();
+
+      expect(fakeAuth.reauthPassword, 'secret');
+      expect(fakeAuth.deletedUser, isTrue);
+      expect(cleaner.deletedUids, ['alice']);
+    });
+
+    testWidgets('パスワードが違えばエラーを表示し、端末内データは消さない', (tester) async {
+      final fakeAuth = _FakeAuthService()
+        ..deleteErrorCodes.add('requires-recent-login')
+        ..reauthErrorCode = 'wrong-password';
+
+      final cleaner = await pumpAndConfirmDelete(tester, fakeAuth);
+      await tester.enterText(find.byType(TextField), 'wrong');
+      await tester.tap(find.text(AppStrings.settingsReauthConfirmButton));
+      await tester.pumpAndSettle();
+
+      expect(find.text(authErrorMessage('wrong-password')), findsOneWidget);
+      expect(fakeAuth.deletedUser, isFalse);
+      expect(cleaner.deletedUids, isEmpty);
+    });
+
+    testWidgets('再認証をキャンセルしたら消去せず、確認ダイアログを再び操作できる', (tester) async {
+      final fakeAuth = _FakeAuthService()
+        ..deleteErrorCodes
+            .addAll(['requires-recent-login', 'requires-recent-login']);
+
+      final cleaner = await pumpAndConfirmDelete(tester, fakeAuth);
+      await tester.tap(find.text(AppStrings.cancelButton).last);
+      await tester.pumpAndSettle();
+
+      expect(fakeAuth.deletedUser, isFalse);
+      expect(cleaner.deletedUids, isEmpty);
+      // 処理中のまま固まらず、もう一度「消去する」を押せる
+      await tester
+          .tap(find.text(AppStrings.settingsDeleteAccountConfirmButton));
+      await tester.pumpAndSettle();
+      expect(find.text(AppStrings.settingsReauthTitle), findsOneWidget);
+    });
+
+    testWidgets('通信エラーなどはメッセージを表示し、消去しない', (tester) async {
+      final fakeAuth = _FakeAuthService()
+        ..deleteErrorCodes.add('network-request-failed');
+
+      final cleaner = await pumpAndConfirmDelete(tester, fakeAuth);
+
+      expect(
+        find.text(authErrorMessage('network-request-failed')),
+        findsOneWidget,
+      );
+      expect(find.text(AppStrings.settingsReauthTitle), findsNothing);
+      expect(cleaner.deletedUids, isEmpty);
     });
   });
 }
