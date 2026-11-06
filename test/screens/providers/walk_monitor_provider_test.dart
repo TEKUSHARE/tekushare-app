@@ -76,6 +76,8 @@ Position _pos(double lat, double lng) => Position(
     );
 
 void main() {
+  // ルートの途中保存がアプリのライフサイクルを監視するため
+  TestWidgetsFlutterBinding.ensureInitialized();
   late StreamController<Position> positions;
 
   Future<ProviderContainer> makeContainer({
