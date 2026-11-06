@@ -58,6 +58,10 @@ async function sendPushToUser(
       type: data.type,
       error: String(e),
     });
+    // アプリの削除などで無効になったトークンは、毎回失敗するので削除する
+    if ((e as { code?: string }).code === "messaging/registration-token-not-registered") {
+      await tokenDoc.ref.delete().catch(() => undefined);
+    }
     return false;
   }
 }
