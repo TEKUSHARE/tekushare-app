@@ -145,5 +145,22 @@ service cloud.firestore {
 
       allow delete: if isSignedIn() && request.auth.uid in resource.data.uids;
     }
+
+    // 安否通知の送信依頼（散歩中に一定時間反応がないとき）。
+    // 本人が requestedAt（サーバー時刻）だけを書き込み、Cloud Functions（onSafetyAlertRequested）が
+    // 連携相手へ FCM を送って result を書き戻す。result はクライアントから変更できない。
+    match /safetyAlerts/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+
+      allow create: if isSignedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['requestedAt'])
+        && request.resource.data.requestedAt == request.time;
+
+      // 誤作動・不正利用で連携相手へ通知が連続しないよう、前回の依頼から5分は受け付けない
+      allow update: if isSignedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requestedAt'])
+        && request.resource.data.requestedAt == request.time
+        && request.time > resource.data.requestedAt + duration.value(5, 'm');
+    }
   }
 }

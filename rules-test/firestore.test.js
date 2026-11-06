@@ -8,7 +8,7 @@ const {
   assertFails,
 } = require("@firebase/rules-unit-testing");
 const {
-  doc, getDoc, getDocs, collection, setDoc, writeBatch, Timestamp,
+  doc, getDoc, getDocs, collection, setDoc, writeBatch, Timestamp, serverTimestamp,
 } = require("firebase/firestore");
 
 const future = () => Timestamp.fromDate(new Date(Date.now() + 86400000));
@@ -188,4 +188,46 @@ test("shares は自分の分だけ、users の設定と同じバッチで更新�
   await assertFails(other.commit());
   const mallory = env.authenticatedContext("mallory").firestore();
   await assertFails(setDoc(doc(mallory, "accountLinks/alice_bob"), { "shares": { alice: on, bob: on } }, { merge: true }));
+});
+
+test("安否通知の依頼は本人だけがサーバー時刻で作成・取得でき、他人はできない", async () => {
+  const alice = env.authenticatedContext("alice").firestore();
+  await assertSucceeds(setDoc(doc(alice, "safetyAlerts/alice"), { requestedAt: serverTimestamp() }));
+  await assertSucceeds(getDoc(doc(alice, "safetyAlerts/alice")));
+
+  const mallory = env.authenticatedContext("mallory").firestore();
+  await assertFails(getDoc(doc(mallory, "safetyAlerts/alice")));
+  await assertFails(setDoc(doc(mallory, "safetyAlerts/alice"), { requestedAt: serverTimestamp() }));
+  const anon = env.unauthenticatedContext().firestore();
+  await assertFails(setDoc(doc(anon, "safetyAlerts/alice"), { requestedAt: serverTimestamp() }));
+});
+
+test("安否通知の依頼はクライアント時刻や結果(result)を書き込めない", async () => {
+  const alice = env.authenticatedContext("alice").firestore();
+  await assertFails(setDoc(doc(alice, "safetyAlerts/alice"), { requestedAt: Timestamp.now() }));
+  await assertFails(setDoc(doc(alice, "safetyAlerts/alice"), {
+    requestedAt: serverTimestamp(), result: { sentCount: 1 },
+  }));
+});
+
+test("安否通知の再依頼は前回から5分経過後だけ受け付け、結果は変更できない", async () => {
+  const minutesAgo = (m) => Timestamp.fromDate(new Date(Date.now() - m * 60000));
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, "safetyAlerts/alice"), {
+      requestedAt: minutesAgo(1), result: { requestedAt: minutesAgo(1), sentCount: 1 },
+    });
+    await setDoc(doc(db, "safetyAlerts/bob"), {
+      requestedAt: minutesAgo(6), result: { requestedAt: minutesAgo(6), sentCount: 1 },
+    });
+  });
+
+  const alice = env.authenticatedContext("alice").firestore();
+  await assertFails(setDoc(doc(alice, "safetyAlerts/alice"), { requestedAt: serverTimestamp() }, { merge: true }));
+
+  const bob = env.authenticatedContext("bob").firestore();
+  await assertFails(setDoc(doc(bob, "safetyAlerts/bob"), {
+    requestedAt: serverTimestamp(), result: { sentCount: 99 },
+  }, { merge: true }));
+  await assertSucceeds(setDoc(doc(bob, "safetyAlerts/bob"), { requestedAt: serverTimestamp() }, { merge: true }));
 });

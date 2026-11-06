@@ -27,6 +27,7 @@ class NotificationService {
   static const _idSmsSent = 4;
   static const _idWalkReminder = 5;
   static const _idWalkAutoEnd = 6;
+  static const _idRemoteMessage = 7;
   // geolocator が startForeground で使う ID と同じにしてスロットを共有させる
   static const _idWalkOngoing = 75415;
 
@@ -92,6 +93,20 @@ class NotificationService {
       id: _idSmsSent,
       title: AppStrings.smsSentNotificationTitle,
       body: AppStrings.smsSentNotificationBody,
+      notificationDetails: _notificationDetails(),
+    );
+  }
+
+  /// アプリを開いている間に届いたプッシュ通知（連携相手の安否通知など）を表示する。
+  /// Android は前面にいるとき FCM の通知を自動で表示しないため、ここで代わりに出す
+  Future<void> showRemoteNotification({
+    required String title,
+    required String body,
+  }) async {
+    await _plugin.show(
+      id: _idRemoteMessage,
+      title: title,
+      body: body,
       notificationDetails: _notificationDetails(),
     );
   }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -10,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:tekushare/core/config/flavor.dart';
 import 'package:tekushare/core/constants/app_colors.dart';
 import 'package:tekushare/core/theme/app_sizing_theme.dart';
+import 'package:tekushare/infrastructure/notification_service.dart';
 import 'package:tekushare/screens/pages/account_link/view/accept_invite_page.dart';
 import 'package:tekushare/screens/pages/auth/view/display_name_page.dart';
 import 'package:tekushare/screens/pages/auth/view/email_auth_page.dart';
@@ -41,6 +43,7 @@ class _TekuShareAppState extends ConsumerState<TekuShareApp> {
 
   String? _lastFcmSavedUid;
   StreamSubscription<String>? _tokenRefreshSub;
+  StreamSubscription<RemoteMessage>? _foregroundMessageSub;
 
   Future<void> _saveFcmToken(String uid) async {
     if (_lastFcmSavedUid == uid) return;
@@ -74,11 +77,38 @@ class _TekuShareAppState extends ConsumerState<TekuShareApp> {
       _lastFcmSavedUid = null;
       _saveFcmToken(uid);
     });
+    _listenForegroundMessages();
+  }
+
+  /// アプリを開いている間に届いたプッシュ通知も表示する。
+  /// 連携相手の安否通知を、アプリを使用中でも見逃さないようにするため。
+  void _listenForegroundMessages() {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      // iOS は OS に表示を任せる
+      unawaited(
+        FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+          alert: true,
+          sound: true,
+        ),
+      );
+      return;
+    }
+    _foregroundMessageSub = FirebaseMessaging.onMessage.listen((message) {
+      final notification = message.notification;
+      if (notification == null) return;
+      unawaited(
+        NotificationService.instance.showRemoteNotification(
+          title: notification.title ?? '',
+          body: notification.body ?? '',
+        ),
+      );
+    });
   }
 
   @override
   void dispose() {
     _tokenRefreshSub?.cancel();
+    _foregroundMessageSub?.cancel();
     super.dispose();
   }
 
