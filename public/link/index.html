@@ -54,12 +54,24 @@
     <div class="icon">🚶</div>
     <h1>てくしぇあへの招待</h1>
     <p>散歩スポットをシェアするアプリ「てくしぇあ」に招待されました。アプリをインストールして招待を承認してください。</p>
-    <a id="store-link" class="btn" href="https://play.google.com/store/apps/details?id=com.example.tekushare">
+    <!-- App Store ID は App Store Connect でアプリ作成後に差し替える（#178） -->
+    <a id="ios-link" class="btn" href="https://apps.apple.com/jp/app/id000000000">
+      App Store でインストール
+    </a>
+    <a id="store-link" class="btn" href="https://play.google.com/store/apps/details?id=com.tekushare.app">
       Google Play でインストール
     </a>
     <a id="open-link" class="btn-sub" href="#">アプリを開く</a>
   </div>
   <script>
+    // iOS か Android かによってストアリンクの表示を切り替える
+    const ua = navigator.userAgent;
+    if (/iPhone|iPad|iPod/.test(ua)) {
+      document.getElementById('store-link').style.display = 'none';
+    } else if (/Android/.test(ua)) {
+      document.getElementById('ios-link').style.display = 'none';
+    }
+
     const token = location.pathname.split('/').filter(Boolean).pop();
     const appScheme = 'tekushare://link/' + token;
     document.getElementById('open-link').href = appScheme;
