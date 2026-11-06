@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -106,6 +104,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final state = ref.watch(settingsViewModelProvider);
     final vm = ref.read(settingsViewModelProvider.notifier);
     final contacts = ref.watch(contactProvider).value ?? [];
+    final isSmsSupported = ref.watch(isSmsSupportedProvider);
+    final linkedCount =
+        ref.watch(linkedAccountsProvider).valueOrNull?.length ?? 0;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -130,6 +131,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 state: state,
                 vm: vm,
                 contacts: contacts,
+                isSmsSupported: isSmsSupported,
+                linkedCount: linkedCount,
                 onAddContact: () => _openPhoneRegisterPage(),
                 onShowContacts: () => _showContactsDialog(contacts),
               ),
@@ -501,6 +504,8 @@ class _InactivityCard extends StatelessWidget {
     required this.state,
     required this.vm,
     required this.contacts,
+    required this.isSmsSupported,
+    required this.linkedCount,
     required this.onAddContact,
     required this.onShowContacts,
   });
@@ -508,6 +513,12 @@ class _InactivityCard extends StatelessWidget {
   final SettingsState state;
   final SettingsViewModel vm;
   final List<Contact> contacts;
+
+  /// SMS の通知先を使えるか（Android のみ）。iOS では連携相手へのプッシュ通知だけで知らせる
+  final bool isSmsSupported;
+
+  /// 連携相手の人数（プッシュ通知の届け先）
+  final int linkedCount;
   final VoidCallback onAddContact;
   final VoidCallback onShowContacts;
 
@@ -560,43 +571,44 @@ class _InactivityCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              GestureDetector(
-                onTap: contacts.isEmpty ? onAddContact : onShowContacts,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ExcludeSemantics(
-                      child: SvgPicture.asset(
-                        'assets/SVG/phone.svg',
-                        width: AppSize.iconLg,
-                        height: AppSize.iconLg,
+              if (isSmsSupported)
+                GestureDetector(
+                  onTap: contacts.isEmpty ? onAddContact : onShowContacts,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ExcludeSemantics(
+                        child: SvgPicture.asset(
+                          'assets/SVG/phone.svg',
+                          width: AppSize.iconLg,
+                          height: AppSize.iconLg,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: AppSize.phoneIconGap),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          AppStrings.settingsInactivityContact,
-                          style: TextStyle(
-                            fontSize: AppTextStyle.xs,
-                            color: Colors.black,
+                      const SizedBox(width: AppSize.phoneIconGap),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            AppStrings.settingsInactivityContact,
+                            style: TextStyle(
+                              fontSize: AppTextStyle.xs,
+                              color: Colors.black,
+                            ),
                           ),
-                        ),
-                        Text(
-                          contacts.isEmpty
-                              ? AppStrings.settingsInactivityContactSet
-                              : '${contacts.length}件登録中',
-                          style: const TextStyle(
-                            fontSize: AppTextStyle.sm2,
-                            color: AppColors.primary,
+                          Text(
+                            contacts.isEmpty
+                                ? AppStrings.settingsInactivityContactSet
+                                : '${contacts.length}件登録中',
+                            style: const TextStyle(
+                              fontSize: AppTextStyle.sm2,
+                              color: AppColors.primary,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               const SizedBox(width: AppSpacing.lg),
             ],
           ),
@@ -606,7 +618,7 @@ class _InactivityCard extends StatelessWidget {
               _CustomSwitch(
                 value: state.inactivityEnabled,
                 onChanged: (v) async {
-                  if (v && Platform.isAndroid) {
+                  if (v && isSmsSupported) {
                     final status = await Permission.sms.request();
                     if (status.isPermanentlyDenied) {
                       await openAppSettings();
@@ -637,6 +649,20 @@ class _InactivityCard extends StatelessWidget {
               ),
             ],
           ),
+          // Android で SMS の通知先を登録済みなら SMS で届くため、未連携でも案内しない
+          if (linkedCount > 0 || !isSmsSupported || contacts.isEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              linkedCount > 0
+                  ? AppStrings.settingsInactivityPushNote(linkedCount)
+                  : AppStrings.settingsInactivityNoLinkNote,
+              style: TextStyle(
+                fontSize: AppTextStyle.xxs,
+                color:
+                    linkedCount > 0 ? AppColors.textDisabled : AppColors.error,
+              ),
+            ),
+          ],
         ],
       ),
     );

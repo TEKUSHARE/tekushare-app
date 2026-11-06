@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,11 +8,13 @@ import 'package:tekushare/data/repositories/walk_session_repository_impl.dart';
 import 'package:tekushare/domain/repositories/account_link_repository.dart';
 import 'package:tekushare/domain/repositories/contact_repository.dart';
 import 'package:tekushare/domain/repositories/photo_repository.dart';
+import 'package:tekushare/domain/repositories/safety_alert_repository.dart';
 import 'package:tekushare/domain/repositories/route_repository.dart';
 import 'package:tekushare/domain/repositories/saved_route_repository.dart';
 import 'package:tekushare/domain/repositories/spot_repository.dart';
 import 'package:tekushare/domain/repositories/walk_session_repository.dart';
 import 'package:tekushare/domain/repositories/walk_status_repository.dart';
+import 'package:tekushare/domain/usecases/walk/send_safety_alert.dart';
 import 'package:tekushare/infrastructure/camera_service.dart';
 import 'package:tekushare/infrastructure/local_data_cleaner.dart';
 import 'package:tekushare/infrastructure/sms_service.dart';
@@ -78,6 +81,25 @@ final accountLinkRepositoryProvider = Provider<AccountLinkRepository>((ref) {
 final walkStatusRepositoryProvider = Provider<WalkStatusRepository>((ref) {
   throw UnimplementedError(
       'walkStatusRepositoryProvider must be overridden in ProviderScope');
+});
+
+final safetyAlertRepositoryProvider = Provider<SafetyAlertRepository>((ref) {
+  throw UnimplementedError(
+      'safetyAlertRepositoryProvider must be overridden in ProviderScope');
+});
+
+/// この端末で SMS を自動送信できるか。
+/// iOS はアプリから SMS を自動送信できないため Android のみ true。
+final isSmsSupportedProvider = Provider<bool>((ref) {
+  return !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+});
+
+final sendSafetyAlertProvider = Provider<SendSafetyAlert>((ref) {
+  return SendSafetyAlert(
+    safetyAlertRepository: ref.watch(safetyAlertRepositoryProvider),
+    smsService: ref.watch(smsServiceProvider),
+    isSmsSupported: ref.watch(isSmsSupportedProvider),
+  );
 });
 
 final sharedPrefsProvider = FutureProvider<SharedPreferences>((ref) async {

@@ -6,6 +6,62 @@ admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
 
+/** 自分と連携しているアカウントの UID 一覧を返す */
+async function findPartnerUids(uid: string): Promise<string[]> {
+  const linksSnap = await db
+    .collection("accountLinks")
+    .where("uids", "array-contains", uid)
+    .get();
+  return linksSnap.docs.flatMap((doc) => {
+    const uids = doc.data().uids as string[];
+    return uids.filter((u) => u !== uid);
+  });
+}
+
+/**
+ * 指定ユーザーの端末へ FCM を送る。送れたら true。
+ * トークン未登録・無効などで送れない場合は false（他の相手への送信を止めないため例外は投げない）。
+ */
+async function sendPushToUser(
+  partnerUid: string,
+  notification: { title: string; body: string },
+  data: Record<string, string>,
+): Promise<boolean> {
+  const tokenDoc = await db
+    .collection("users")
+    .doc(partnerUid)
+    .collection("private")
+    .doc("fcm")
+    .get();
+  const fcmToken = tokenDoc.data()?.fcmToken as string | undefined;
+  if (!fcmToken) return false;
+
+  try {
+    await messaging.send({
+      token: fcmToken,
+      notification,
+      data,
+      apns: {
+        payload: {
+          aps: { sound: "default" },
+        },
+      },
+      android: {
+        priority: "high",
+        notification: { sound: "default" },
+      },
+    });
+    return true;
+  } catch (e) {
+    functions.logger.warn("[sendPushToUser] FCM の送信に失敗しました", {
+      partnerUid,
+      type: data.type,
+      error: String(e),
+    });
+    return false;
+  }
+}
+
 /**
  * users/{uid} の walkingStatus が 'walking' に変わったとき、
  * 連携アカウントへ FCM プッシュ通知を送信する。
@@ -26,51 +82,73 @@ export const onWalkStarted = functions
     const displayName =
       (after?.displayName as string | undefined) ?? "お友達";
 
-    // 連携アカウントを検索
-    const linksSnap = await db
-      .collection("accountLinks")
-      .where("uids", "array-contains", uid)
-      .get();
-
-    if (linksSnap.empty) return;
-
-    const partnerUids = linksSnap.docs.flatMap((doc) => {
-      const uids = doc.data().uids as string[];
-      return uids.filter((u) => u !== uid);
-    });
-
-    // 各パートナーへ FCM 送信
+    const partnerUids = await findPartnerUids(uid);
     await Promise.all(
-      partnerUids.map(async (partnerUid) => {
-        const tokenDoc = await db
-          .collection("users")
-          .doc(partnerUid)
-          .collection("private")
-          .doc("fcm")
-          .get();
-        const fcmToken = tokenDoc.data()?.fcmToken as string | undefined;
-        if (!fcmToken) return;
+      partnerUids.map((partnerUid) =>
+        sendPushToUser(
+          partnerUid,
+          { title: "散歩開始", body: `${displayName}が散歩を始めました` },
+          { type: "walk_started", partnerUid: uid },
+        ),
+      ),
+    );
+  });
 
-        await messaging.send({
-          token: fcmToken,
-          notification: {
-            title: "散歩開始",
-            body: `${displayName}が散歩を始めました`,
+/**
+ * safetyAlerts/{uid} の requestedAt が更新されたとき（散歩中に一定時間反応がないとき）、
+ * 連携アカウントへ安否通知を FCM で送り、結果を result に書き戻す。
+ * iOS はアプリから SMS を自動送信できないため、OS に関係なく届くサーバー送信で知らせる。
+ */
+export const onSafetyAlertRequested = functions
+  .region("asia-northeast1")
+  .firestore.document("safetyAlerts/{uid}")
+  .onWrite(async (change, context) => {
+    const uid = context.params.uid;
+    const after = change.after.data();
+    const requestedAt = after?.requestedAt as
+      | admin.firestore.Timestamp
+      | undefined;
+    if (!requestedAt) return;
+
+    // 自分が書き戻した result の更新や、同じ依頼の再実行では送らない
+    const handledAt = after?.result?.requestedAt as
+      | admin.firestore.Timestamp
+      | undefined;
+    if (handledAt?.isEqual(requestedAt)) return;
+    const beforeRequestedAt = change.before.data()?.requestedAt as
+      | admin.firestore.Timestamp
+      | undefined;
+    if (beforeRequestedAt?.isEqual(requestedAt)) return;
+
+    const userDoc = await db.collection("users").doc(uid).get();
+    const displayName =
+      (userDoc.data()?.displayName as string | undefined) ?? "お友達";
+
+    const partnerUids = await findPartnerUids(uid);
+    const results = await Promise.all(
+      partnerUids.map((partnerUid) =>
+        sendPushToUser(
+          partnerUid,
+          {
+            title: "安否確認",
+            body: `${displayName}さんから一定時間反応がありません。確認してください。`,
           },
-          data: {
-            type: "walk_started",
-            partnerUid: uid,
-          },
-          apns: {
-            payload: {
-              aps: { sound: "default" },
-            },
-          },
-          android: {
-            notification: { sound: "default" },
-          },
-        });
-      }),
+          { type: "safety_alert", partnerUid: uid },
+        ),
+      ),
+    );
+    const sentCount = results.filter((sent) => sent).length;
+
+    await change.after.ref.set(
+      {
+        result: {
+          requestedAt,
+          sentCount,
+          failedCount: results.length - sentCount,
+          processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+      },
+      { merge: true },
     );
   });
 
@@ -111,6 +189,10 @@ async function deleteUserData(uid: string): Promise<string[]> {
   });
 
   await run("users", () => db.recursiveDelete(db.collection("users").doc(uid)));
+
+  await run("safetyAlerts", () =>
+    db.collection("safetyAlerts").doc(uid).delete(),
+  );
 
   await run("storage", () =>
     admin.storage().bucket().deleteFiles({ prefix: `users/${uid}/` }),

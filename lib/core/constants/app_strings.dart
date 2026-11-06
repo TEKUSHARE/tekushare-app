@@ -39,11 +39,13 @@ abstract class AppStrings {
   static const gpsTimeoutContinue = 'このまま続ける';
   static const safetyOk = '元気です';
   static const safetyConfirmTitle = '大丈夫ですか？';
-  static const smsSendError = 'SMS送信に失敗しました';
-  static const safetyConfirmBody = '動きがありません。\n応答がない場合、登録した通知先にSMSを送信します。';
-  static const safetySmsSentBody = 'SMSで通知しました。\n元気な場合はボタンを押してください。';
+  static const safetyConfirmBody = '動きがありません。\n応答がない場合、通知先・連携相手に知らせます。';
+  static const safetyAlertSendingBody = '通知先・連携相手に知らせています…';
+  static const safetyAlertSentBody = '通知先・連携相手に知らせました。\n元気な場合はボタンを押してください。';
+  static const safetyAlertFailedBody =
+      '通知先・連携相手に知らせることができませんでした。\n通信状況を確認してください。元気な場合はボタンを押してください。';
   static const smsSentNotificationTitle = '安否通知を送信しました';
-  static const smsSentNotificationBody = '登録した通知先にSMSを送信しました。';
+  static const smsSentNotificationBody = '通知先・連携相手に安否通知を送りました。';
   static const walkForegroundNotificationTitle = 'てくしぇあ';
   static const walkForegroundNotificationBody = 'バックグラウンドでGPSを記録しています';
   static const walkReminderNotificationTitle = '散歩を続けていますか？';
@@ -173,6 +175,10 @@ abstract class AppStrings {
   static const settingsInactivitySubtitle = '無動作感知システム';
   static const settingsInactivityContact = '通知先';
   static const settingsInactivityContactSet = '設定する';
+  static String settingsInactivityPushNote(int linkedCount) =>
+      '応答がないときは、連携相手（$linkedCount人）にプッシュ通知で知らせます。';
+  static const settingsInactivityNoLinkNote =
+      '連携相手がいないため、安否通知が届きません。下の「シェア」からリンクを送って連携してください。';
   static const settingsShareTitle = 'シェア';
   static const settingsShareSubtitle = '共有するアカウント設定';
   static const settingsShareRegistered = '登録済み';

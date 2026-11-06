@@ -168,28 +168,26 @@ class _WalkPageState extends ConsumerState<WalkPage> {
         onSafe: () => ref
             .read(walkTimerProvider.notifier)
             .resetInact(settings.inactivityMinutes),
-        onTimeout: _sendSmsToContacts,
+        onTimeout: _sendSafetyAlert,
       ),
     );
   }
 
-  Future<void> _sendSmsToContacts() async {
+  /// 通知先（SMS・Android のみ）と連携相手（プッシュ通知）へ安否通知を送り、
+  /// 誰か一人にでも届いたかを返す
+  Future<bool> _sendSafetyAlert() async {
     final contacts = ref.read(contactProvider).valueOrNull ?? [];
-    if (contacts.isEmpty) return;
     final senderName =
         ref.read(authStateProvider).valueOrNull?.displayName ?? '';
-    try {
-      await ref.read(smsServiceProvider).sendInactivityAlert(
-            contacts: contacts,
-            senderName: senderName,
-          );
+    final result = await ref.read(sendSafetyAlertProvider)(
+      contacts: contacts,
+      senderName: senderName,
+    );
+    // 届いていないのに「送信しました」と表示しないよう、届いたときだけ通知する
+    if (result.isDelivered) {
       await ref.read(notificationServiceProvider).showSmsSentNotification();
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(AppStrings.smsSendError)),
-      );
     }
+    return result.isDelivered;
   }
 
   void _resetTimer() {
@@ -842,7 +840,9 @@ class _SafetyConfirmDialog extends StatefulWidget {
   });
 
   final VoidCallback onSafe;
-  final Future<void> Function() onTimeout;
+
+  /// 猶予時間が過ぎたときに安否通知を送り、届いたかどうかを返す
+  final Future<bool> Function() onTimeout;
 
   @override
   State<_SafetyConfirmDialog> createState() => _SafetyConfirmDialogState();
@@ -851,7 +851,8 @@ class _SafetyConfirmDialog extends StatefulWidget {
 class _SafetyConfirmDialogState extends State<_SafetyConfirmDialog> {
   late int _secondsLeft;
   Timer? _timer;
-  bool _smsSent = false;
+  // 猶予時間が過ぎて送信を終えたら、送信結果（届いたか）を入れる
+  bool? _isAlertDelivered;
 
   @override
   void initState() {
@@ -865,9 +866,9 @@ class _SafetyConfirmDialogState extends State<_SafetyConfirmDialog> {
     setState(() => _secondsLeft--);
     if (_secondsLeft <= 0) {
       _timer?.cancel();
-      await widget.onTimeout();
+      final isDelivered = await widget.onTimeout();
       if (!mounted) return;
-      setState(() => _smsSent = true);
+      setState(() => _isAlertDelivered = isDelivered);
     }
   }
 
@@ -887,11 +888,15 @@ class _SafetyConfirmDialogState extends State<_SafetyConfirmDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _smsSent
-                  ? AppStrings.safetySmsSentBody
-                  : AppStrings.safetyConfirmBody,
+              switch (_isAlertDelivered) {
+                null when _secondsLeft <= 0 =>
+                  AppStrings.safetyAlertSendingBody,
+                null => AppStrings.safetyConfirmBody,
+                true => AppStrings.safetyAlertSentBody,
+                false => AppStrings.safetyAlertFailedBody,
+              },
             ),
-            if (!_smsSent) ...[
+            if (_isAlertDelivered == null && _secondsLeft > 0) ...[
               const SizedBox(height: AppSpacing.x2l),
               Text(
                 '$_secondsLeft秒',

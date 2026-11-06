@@ -23,6 +23,7 @@ import 'package:tekushare/screens/pages/map/view/walk_route_page.dart';
 import 'package:tekushare/screens/pages/settings/view/phone_register_page.dart';
 import 'package:tekushare/screens/pages/settings/view/settings_page.dart';
 import 'package:tekushare/screens/pages/spot/view/spot_list_page.dart';
+import 'package:tekushare/screens/providers/account_link_provider.dart';
 import 'package:tekushare/screens/providers/app_providers.dart';
 import 'package:tekushare/screens/providers/auth_provider.dart';
 import 'package:tekushare/screens/providers/contact_provider.dart';
@@ -1052,6 +1053,82 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(fakeAuth.deletedUser, isTrue);
+    });
+  });
+
+  group('SettingsPage 安否確認の通知先', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    Future<void> pumpWith(
+      WidgetTester tester, {
+      required bool isSmsSupported,
+      required int linkedCount,
+    }) async {
+      tester.view.physicalSize = const Size(1170, 3000);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final linked = List.generate(
+        linkedCount,
+        (i) => LinkedAccount(
+          uid: 'u$i',
+          displayName: '相手$i',
+          linkedAt: DateTime(2026),
+        ),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            _contactOverride,
+            isSmsSupportedProvider.overrideWithValue(isSmsSupported),
+            linkedAccountsProvider.overrideWith((ref) => Stream.value(linked)),
+          ],
+          child: MaterialApp(
+            builder: (context, child) {
+              final sw = MediaQuery.sizeOf(context).width;
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  extensions: [AppSizingTheme.fromScreenWidth(sw)],
+                ),
+                child: child!,
+              );
+            },
+            home: const SettingsPage(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('iOS（SMS 非対応）では SMS の通知先を表示しない', (tester) async {
+      await pumpWith(tester, isSmsSupported: false, linkedCount: 1);
+
+      expect(find.text(AppStrings.settingsInactivityContact), findsNothing);
+      expect(
+        find.text(AppStrings.settingsInactivityPushNote(1)),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('iOS で連携相手がいなければ、届かないことを案内する', (tester) async {
+      await pumpWith(tester, isSmsSupported: false, linkedCount: 0);
+
+      expect(
+          find.text(AppStrings.settingsInactivityNoLinkNote), findsOneWidget);
+    });
+
+    testWidgets('Android では SMS の通知先を表示する', (tester) async {
+      await pumpWith(tester, isSmsSupported: true, linkedCount: 2);
+
+      expect(find.text(AppStrings.settingsInactivityContact), findsOneWidget);
+      expect(
+        find.text(AppStrings.settingsInactivityPushNote(2)),
+        findsOneWidget,
+      );
     });
   });
 }
