@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tekushare/infrastructure/fcm_token_registrar.dart';
 
@@ -95,6 +97,29 @@ void main() {
 
       await registrar.retryNow('alice');
       expect(saved, [('alice', 'token')]);
+    });
+
+    test('保存の途中でサインアウトされたら登録済みにせず、再ログインで保存し直す', () async {
+      final saving = Completer<void>();
+      final registrar = FcmTokenRegistrar(
+        getToken: () async => 'token',
+        saveToken: (uid, token) async {
+          if (!saving.isCompleted) await saving.future;
+          saved.add((uid, token));
+        },
+      );
+
+      final first = registrar.register('alice');
+      await Future<void>.delayed(Duration.zero);
+      registrar.reset(); // 保存の完了前にサインアウト
+      saving.complete();
+      await first;
+
+      expect(registrar.isRegisteredFor('alice'), isFalse);
+
+      await registrar.register('alice'); // 同じユーザーで再ログイン
+      expect(registrar.isRegisteredFor('alice'), isTrue);
+      expect(saved.length, 2); // 再ログインでも保存し直している
     });
 
     test('サインアウト（reset）で再試行を止める', () async {

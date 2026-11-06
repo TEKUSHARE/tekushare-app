@@ -12,9 +12,9 @@ class FcmTokenRegistrar {
     required Future<String?> Function() getToken,
     required Future<void> Function(String uid, String token) saveToken,
     List<Duration> retryDelays = defaultRetryDelays,
-  })  : _getToken = getToken,
-        _saveToken = saveToken,
-        _retryDelays = retryDelays;
+  }) : _getToken = getToken,
+       _saveToken = saveToken,
+       _retryDelays = retryDelays;
 
   /// 再試行の間隔（回数はこの要素数まで）
   static const defaultRetryDelays = [
@@ -34,6 +34,9 @@ class FcmTokenRegistrar {
   Timer? _retryTimer;
   int _retryCount = 0;
 
+  /// [reset] のたびに進める。保存の途中でサインアウトされた場合に、古い保存結果を無視するために使う
+  int _generation = 0;
+
   /// [uid] のトークン保存が成功済みか
   bool isRegisteredFor(String uid) => _savedUid == uid;
 
@@ -46,17 +49,21 @@ class FcmTokenRegistrar {
       _retryUid = uid;
     }
     _savingUid = uid;
+    final generation = _generation;
     try {
       final token = await _getToken();
       if (token == null) throw StateError('FCM トークンを取得できませんでした');
       await _saveToken(uid, token);
+      // 保存中にサインアウトされていたら、登録済みにしない（再ログイン時に保存し直す）
+      if (generation != _generation) return;
       _savedUid = uid;
       _cancelRetry();
     } catch (e) {
+      if (generation != _generation) return;
       debugPrint('FCM トークンの保存に失敗しました（$_retryCount回目の再試行）: $e');
       _scheduleRetry(uid);
     } finally {
-      if (_savingUid == uid) _savingUid = null;
+      if (generation == _generation && _savingUid == uid) _savingUid = null;
     }
   }
 
@@ -76,6 +83,7 @@ class FcmTokenRegistrar {
 
   /// サインアウト時に呼ぶ
   void reset() {
+    _generation++;
     _savedUid = null;
     _savingUid = null;
     _cancelRetry();
