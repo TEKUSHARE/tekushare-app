@@ -26,7 +26,6 @@ dependencies:
   app_links: ^7.0.0
   latlong2: ^0.10.1
   url_launcher: ^6.3.2
-  flutter_sms: ^3.0.1
   shared_preferences: ^2.3.4
   firebase_storage: ^13.4.3
   firebase_messaging: ^16.4.2

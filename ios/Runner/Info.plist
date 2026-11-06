@@ -30,9 +30,16 @@
 		<string>散歩中の現在地を記録するために位置情報を使用します。</string>
 		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 		<string>バックグラウンドでも散歩ルートを記録するために位置情報を使用します。</string>
+		<key>NSCameraUsageDescription</key>
+		<string>散歩中に見つけたスポットの写真を撮影するためにカメラを使用します。</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>スポットに添付する写真を選ぶために写真ライブラリを使用します。</string>
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false/>
 		<key>UIBackgroundModes</key>
 		<array>
 			<string>location</string>
+			<string>remote-notification</string>
 		</array>
 		<key>CFBundleURLTypes</key>
 		<array>
@@ -80,15 +87,6 @@
 		<key>UISupportedInterfaceOrientations</key>
 		<array>
 			<string>UIInterfaceOrientationPortrait</string>
-			<string>UIInterfaceOrientationLandscapeLeft</string>
-			<string>UIInterfaceOrientationLandscapeRight</string>
-		</array>
-		<key>UISupportedInterfaceOrientations~ipad</key>
-		<array>
-			<string>UIInterfaceOrientationPortrait</string>
-			<string>UIInterfaceOrientationPortraitUpsideDown</string>
-			<string>UIInterfaceOrientationLandscapeLeft</string>
-			<string>UIInterfaceOrientationLandscapeRight</string>
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>

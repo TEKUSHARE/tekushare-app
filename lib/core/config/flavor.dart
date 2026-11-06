@@ -53,11 +53,11 @@ abstract class AppConfig {
   static String get iosBundleId {
     switch (_flavor) {
       case Flavor.dev:
-        return 'com.example.tekushare.dev';
+        return 'com.tekushare.app.dev';
       case Flavor.stg:
-        return 'com.example.tekushare.stg';
+        return 'com.tekushare.app.stg';
       case Flavor.prod:
-        return 'com.example.tekushare';
+        return 'com.tekushare.app';
     }
   }
 
