@@ -12,9 +12,9 @@ class FcmTokenRegistrar {
     required Future<String?> Function() getToken,
     required Future<void> Function(String uid, String token) saveToken,
     List<Duration> retryDelays = defaultRetryDelays,
-  }) : _getToken = getToken,
-       _saveToken = saveToken,
-       _retryDelays = retryDelays;
+  })  : _getToken = getToken,
+        _saveToken = saveToken,
+        _retryDelays = retryDelays;
 
   /// 再試行の間隔（回数はこの要素数まで）
   static const defaultRetryDelays = [
