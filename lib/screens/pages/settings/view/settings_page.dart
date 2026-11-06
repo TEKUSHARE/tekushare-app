@@ -20,12 +20,34 @@ import 'package:tekushare/screens/providers/app_providers.dart';
 import 'package:tekushare/screens/providers/auth_provider.dart';
 import 'package:tekushare/screens/providers/contact_provider.dart';
 import 'package:tekushare/screens/providers/walk_session_provider.dart';
+import 'package:tekushare/screens/providers/walk_timer_provider.dart';
 import 'package:tekushare/screens/pages/settings/viewmodel/settings_viewmodel.dart';
 import 'package:tekushare/screens/pages/spot/view/spot_list_page.dart';
 import 'package:tekushare/screens/widgets/common/app_bottom_nav.dart';
 import 'package:tekushare/screens/widgets/common/app_confirm_dialog.dart';
 
 /// 設定画面
+/// アカウント削除の後片付けとして、端末内の個人データと散歩の状態を消す。
+///
+/// 削除後はログイン状態の変化でユーザーに紐づく Notifier が破棄されるため、
+/// 削除前に取得した Notifier は使わず、[container] から現在のものを読み直す。
+@visibleForTesting
+Future<void> clearLocalDataAfterAccountDeletion(
+  ProviderContainer container,
+  String? uid,
+) async {
+  // SharedPreferences も消えるため、散歩中の状態・途中保存したルートも消える
+  if (uid != null) {
+    await container.read(localDataCleanerProvider).deleteUserData(uid);
+  }
+  // 端末内データを消す前の内容で作られた散歩セッションが残らないよう、読み直させる
+  container.invalidate(walkSessionProvider);
+  container.read(walkTimerProvider.notifier).reset();
+  await container
+      .read(notificationServiceProvider)
+      .cancelWalkOngoingNotification();
+}
+
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
@@ -129,15 +151,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         confirmLabel: AppStrings.settingsDeleteAccountConfirmButton,
         isDestructive: true,
         onConfirm: () async {
-          // 削除に成功するとログイン状態が変わり画面が破棄されうるため、先に取得しておく
+          // 削除に成功するとログイン状態が変わり、この画面も、ユーザーに紐づく
+          // プロバイダー（散歩セッションなど）も破棄・再生成される。
+          // 破棄されないアプリ全体のコンテナを先に取得し、後片付けはそれを通して行う
+          final container = ProviderScope.containerOf(context, listen: false);
           final uid = ref.read(authStateProvider).valueOrNull?.uid;
-          final cleaner = ref.read(localDataCleanerProvider);
-          final walkSession = ref.read(walkSessionProvider.notifier);
           final isDeleted = await _deleteAccountWithReauth();
           if (!isDeleted) return;
           // アカウント削除に成功した後で端末内データを消す（失敗時に記録が消えないように）
-          await walkSession.resetWalk();
-          if (uid != null) await cleaner.deleteUserData(uid);
+          await clearLocalDataAfterAccountDeletion(container, uid);
           if (!mounted) return;
           Navigator.popUntil(context, (route) => route.isFirst);
         },

@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,6 +23,7 @@ import 'package:tekushare/domain/usecases/spot/save_spot.dart';
 import 'package:tekushare/domain/usecases/spot/update_spot_status.dart';
 import 'package:tekushare/domain/usecases/walk/end_walk.dart';
 import 'package:tekushare/infrastructure/local_data_cleaner.dart';
+import 'package:tekushare/infrastructure/notification_service.dart';
 import 'package:tekushare/screens/pages/map/view/walk_route_page.dart';
 import 'package:tekushare/screens/pages/settings/view/phone_register_page.dart';
 import 'package:tekushare/screens/pages/settings/view/settings_page.dart';
@@ -34,6 +38,10 @@ import 'package:tekushare/screens/providers/walk_session_provider.dart';
 import 'package:tekushare/screens/widgets/common/app_bottom_nav.dart';
 
 class _FakeAuthService implements AuthService {
+  _FakeAuthService({this.onDeleted});
+
+  /// 削除に成功したときに呼ぶ（ログイン状態の変化を再現するため）
+  final void Function()? onDeleted;
   bool signedOut = false;
   bool deletedUser = false;
 
@@ -65,6 +73,7 @@ class _FakeAuthService implements AuthService {
     final code = deleteErrorCodes.isEmpty ? null : deleteErrorCodes.removeAt(0);
     if (code != null) throw AuthException(code);
     deletedUser = true;
+    onDeleted?.call();
   }
 
   @override
@@ -220,10 +229,35 @@ final _spotOverride = spotProvider.overrideWith(
 
 /// 端末内データの削除（ObjectBox が必要）を記録だけする偽物
 class _FakeLocalDataCleaner extends Fake implements LocalDataCleaner {
+  _FakeLocalDataCleaner({this.prefs});
+
+  /// 渡すと、本物と同じく SharedPreferences を消す
+  final SharedPreferences? prefs;
   final deletedUids = <String>[];
 
   @override
-  Future<void> deleteUserData(String uid) async => deletedUids.add(uid);
+  Future<void> deleteUserData(String uid) async {
+    deletedUids.add(uid);
+    await prefs?.clear();
+  }
+}
+
+class _FakeNotificationsPlugin extends Fake
+    implements FlutterLocalNotificationsPlugin {
+  final cancelledIds = <int>[];
+
+  @override
+  Future<void> show({
+    required int id,
+    String? title,
+    String? body,
+    NotificationDetails? notificationDetails,
+    String? payload,
+  }) async {}
+
+  @override
+  Future<void> cancel({required int id, String? tag}) async =>
+      cancelledIds.add(id);
 }
 
 final _contactOverride =
@@ -1291,6 +1325,95 @@ void main() {
       );
       expect(find.text(AppStrings.settingsReauthTitle), findsNothing);
       expect(cleaner.deletedUids, isEmpty);
+    });
+  });
+
+  group('SettingsPage 退会後の後片付け', () {
+    testWidgets('削除でログイン状態が変わり散歩セッションが作り直されても、端末内データと散歩の状態を消す', (tester) async {
+      tester.view.physicalSize = const Size(1170, 3000);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      // 散歩中のまま退会する
+      SharedPreferences.setMockInitialValues({
+        'walk_id': 'walk-1',
+        'walk_status': WalkStatus.walking.index,
+        'walk_started_at': DateTime.now().millisecondsSinceEpoch,
+        'walk_elapsed': 0,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final authController = StreamController<AuthUser?>.broadcast();
+      addTearDown(authController.close);
+      final fakeAuth = _FakeAuthService(
+        onDeleted: () => authController.add(null),
+      );
+      final cleaner = _FakeLocalDataCleaner(prefs: prefs);
+      final plugin = _FakeNotificationsPlugin();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            _contactOverride,
+            authServiceProvider.overrideWithValue(fakeAuth),
+            authStateProvider.overrideWith(
+              (ref) async* {
+                yield const AuthUser(uid: 'alice', displayName: 'A');
+                yield* authController.stream;
+              },
+            ),
+            localDataCleanerProvider.overrideWithValue(cleaner),
+            notificationServiceProvider.overrideWithValue(
+              NotificationService.forTest(plugin),
+            ),
+            // 本物と同じく、ログイン状態が変わると作り直される
+            walkSessionProvider.overrideWith((ref) {
+              ref.watch(authStateProvider);
+              return WalkSessionNotifier(
+                endWalk: const EndWalk(
+                  _FakeWalkSessionRepository(),
+                  _FakeWalkRouteRepository(),
+                ),
+                prefs: prefs,
+                walkStatusRepository: _FakeWalkStatusRepository(),
+              );
+            }),
+          ],
+          child: MaterialApp(
+            builder: (context, child) {
+              final sw = MediaQuery.sizeOf(context).width;
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  extensions: [AppSizingTheme.fromScreenWidth(sw)],
+                ),
+                child: child!,
+              );
+            },
+            home: const SettingsPage(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(SettingsPage)),
+      );
+      // 削除前の散歩セッション（削除後に破棄される）を作っておく
+      expect(container.read(walkSessionProvider).status, WalkStatus.walking);
+
+      await tester.ensureVisible(find.text(AppStrings.settingsDeleteAccount));
+      await tester.tap(find.text(AppStrings.settingsDeleteAccount));
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.text(AppStrings.settingsDeleteAccountConfirmButton));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(fakeAuth.deletedUser, isTrue);
+      expect(cleaner.deletedUids, ['alice']);
+      expect(prefs.getString('walk_id'), isNull);
+      expect(container.read(walkSessionProvider).status, WalkStatus.idle);
+      expect(plugin.cancelledIds, isNotEmpty);
     });
   });
 }
