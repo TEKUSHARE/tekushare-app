@@ -178,34 +178,23 @@ class _TimerDisabledSettingsViewModel extends SettingsViewModel {
       );
 }
 
-class _TimerZeroSettingsViewModel extends SettingsViewModel {
-  @override
-  SettingsState build() => const SettingsState(
-        timerEnabled: true,
-        timerMinutes: 0,
-        inactivityEnabled: false,
-      );
-}
-
-final _timerZeroOverride = settingsViewModelProvider.overrideWith(
-  _TimerZeroSettingsViewModel.new,
-);
-
 final _timerEnabledOverride = settingsViewModelProvider.overrideWith(
   _TimerEnabledSettingsViewModel.new,
 );
 
-// タイマーが 0 秒かつ未発火の初期状態（ProviderScope 注入用）
-class _FiredTimerNotifier extends WalkTimerNotifier {
-  _FiredTimerNotifier() {
+// 散歩開始時に WalkMonitor が初期化した後のタイマー（30分・見守り15分）
+class _InitializedTimerNotifier extends WalkTimerNotifier {
+  _InitializedTimerNotifier() {
     state = const WalkTimerState(
-      turnSecondsLeft: 0,
-      turnFired: false,
-      turnAlertShown: false,
+      turnSecondsLeft: 30 * 60,
+      inactSecondsLeft: 15 * 60,
       initialized: true,
     );
   }
 }
+
+final _initializedTimerOverride =
+    walkTimerProvider.overrideWith((_) => _InitializedTimerNotifier());
 
 final _timerDisabledOverride = settingsViewModelProvider.overrideWith(
   _TimerDisabledSettingsViewModel.new,
@@ -700,6 +689,7 @@ void main() {
           overrides: [
             locationProvider.overrideWith((ref) => const Stream.empty()),
             _timerEnabledOverride,
+            _initializedTimerOverride,
             _notificationOverride,
           ],
           child: MaterialApp(
@@ -730,6 +720,7 @@ void main() {
           overrides: [
             locationProvider.overrideWith((ref) => const Stream.empty()),
             _timerEnabledOverride,
+            _initializedTimerOverride,
             _notificationOverride,
           ],
           child: MaterialApp(
@@ -749,118 +740,6 @@ void main() {
       await tester.pump();
 
       expect(find.byIcon(Icons.refresh), findsOneWidget);
-    });
-
-    // タイマー0秒でアラートダイアログが表示される
-    testWidgets('shows timer finished dialog when timer reaches zero',
-        (tester) async {
-      setDisplaySize(tester);
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            locationProvider.overrideWith((ref) => const Stream.empty()),
-            _timerZeroOverride,
-            _notificationOverride,
-          ],
-          child: MaterialApp(
-            builder: (context, child) {
-              final sw = MediaQuery.sizeOf(context).width;
-              return Theme(
-                data: Theme.of(context).copyWith(
-                  extensions: [AppSizingTheme.fromScreenWidth(sw)],
-                ),
-                child: child!,
-              );
-            },
-            home: const WalkPage(),
-          ),
-        ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump(Duration.zero); // 非同期通知を完了
-      await tester.pump(); // showDialog を処理
-
-      expect(find.text(AppStrings.timerFinishedTitle), findsOneWidget);
-    });
-
-    // アラートのリセットボタンでダイアログが閉じる
-    testWidgets('closes dialog when reset tapped in dialog', (tester) async {
-      setDisplaySize(tester);
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            locationProvider.overrideWith((ref) => const Stream.empty()),
-            _timerZeroOverride,
-            _notificationOverride,
-          ],
-          child: MaterialApp(
-            builder: (context, child) {
-              final sw = MediaQuery.sizeOf(context).width;
-              return Theme(
-                data: Theme.of(context).copyWith(
-                  extensions: [AppSizingTheme.fromScreenWidth(sw)],
-                ),
-                child: child!,
-              );
-            },
-            home: const WalkPage(),
-          ),
-        ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump(Duration.zero);
-      await tester.pump();
-
-      await tester.tap(find.text(AppStrings.timerReset));
-      await tester.pump();
-
-      expect(find.text(AppStrings.timerFinishedTitle), findsNothing);
-    });
-
-    // リセット後にカウントダウンが初期値に戻る
-    testWidgets('timer resets to initial value when reset tapped in dialog',
-        (tester) async {
-      setDisplaySize(tester);
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            locationProvider.overrideWith((ref) => const Stream.empty()),
-            walkTimerProvider.overrideWith((_) => _FiredTimerNotifier()),
-            _timerEnabledOverride, // timerMinutes: 30
-            _notificationOverride,
-          ],
-          child: MaterialApp(
-            builder: (context, child) {
-              final sw = MediaQuery.sizeOf(context).width;
-              return Theme(
-                data: Theme.of(context).copyWith(
-                  extensions: [AppSizingTheme.fromScreenWidth(sw)],
-                ),
-                child: child!,
-              );
-            },
-            home: const WalkPage(),
-          ),
-        ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump(Duration.zero);
-      await tester.pump();
-
-      expect(find.text(AppStrings.timerFinishedTitle), findsOneWidget);
-
-      await tester.tap(find.text(AppStrings.timerReset));
-      await tester.pump();
-
-      expect(find.text(AppStrings.timerFinishedTitle), findsNothing);
-      // カウントダウンが timerMinutes=30 の初期値に戻っていること
-      expect(find.textContaining('30:00'), findsOneWidget);
     });
 
     // タイマー無効時はチップが表示されない

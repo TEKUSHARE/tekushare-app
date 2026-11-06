@@ -23,6 +23,7 @@ import 'package:tekushare/screens/providers/account_link_provider.dart';
 import 'package:tekushare/screens/providers/app_providers.dart';
 import 'package:tekushare/screens/providers/auth_provider.dart';
 import 'package:tekushare/screens/widgets/common/app_update_gate.dart';
+import 'package:tekushare/screens/widgets/walk/walk_monitor_host.dart';
 
 final routeObserver = RouteObserver<ModalRoute<void>>();
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -258,7 +259,13 @@ class _TekuShareAppState extends ConsumerState<TekuShareApp> {
           data: Theme.of(context).copyWith(
             extensions: [AppSizingTheme.fromScreenWidth(sw)],
           ),
-          child: AppUpdateGate(child: child!),
+          child: AppUpdateGate(
+            child: WalkMonitorHost(
+              navigatorKey: navigatorKey,
+              isEnabled: ready.hasValue && authState.valueOrNull != null,
+              child: child!,
+            ),
+          ),
         );
       },
       home: ready.when(

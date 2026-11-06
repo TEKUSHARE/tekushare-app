@@ -88,9 +88,11 @@ jobs:
             test/screens/widgets/common/storage_photo_test.dart \
             test/screens/widgets/common/app_update_gate_test.dart \
             test/screens/widgets/common/app_confirm_dialog_test.dart \
+            test/screens/widgets/walk/walk_monitor_host_test.dart \
             test/screens/providers/auth_provider_test.dart \
             test/screens/providers/inactivity_provider_test.dart \
             test/screens/providers/walk_session_provider_test.dart \
+            test/screens/providers/walk_monitor_provider_test.dart \
             test/screens/pages/history/history_page_test.dart \
             test/screens/pages/settings/phone_register_page_test.dart \
             test/screens/pages/spot/spot_detail_viewmodel_test.dart \
