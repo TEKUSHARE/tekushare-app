@@ -2,7 +2,7 @@
 name: tekushare
 description: 散歩の記録・共有・見守りができるアプリ
 publish_to: 'none'
-version: 1.0.0+14
+version: 1.0.0+15
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
