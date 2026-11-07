@@ -30,6 +30,12 @@
 		<string>散歩中の現在地を記録するために位置情報を使用します。</string>
 		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 		<string>バックグラウンドでも散歩ルートを記録するために位置情報を使用します。</string>
+		<!-- 「正確な位置情報」がオフのとき、散歩中だけ正確な位置を一時的に求める理由（キーは LocationService.temporaryFullAccuracyPurposeKey） -->
+		<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+		<dict>
+			<key>WalkRoute</key>
+			<string>散歩ルートを正しく記録するために、正確な位置情報を使用します。</string>
+		</dict>
 		<key>NSCameraUsageDescription</key>
 		<string>散歩中に見つけたスポットの写真を撮影するためにカメラを使用します。</string>
 		<key>NSPhotoLibraryUsageDescription</key>

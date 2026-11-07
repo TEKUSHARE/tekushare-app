@@ -94,6 +94,7 @@ jobs:
             test/screens/providers/walk_session_provider_test.dart \
             test/screens/providers/walk_monitor_provider_test.dart \
             test/screens/providers/walk_track_points_provider_test.dart \
+            test/screens/providers/location_provider_test.dart \
             test/screens/pages/history/history_page_test.dart \
             test/screens/pages/settings/phone_register_page_test.dart \
             test/screens/pages/spot/spot_detail_viewmodel_test.dart \
