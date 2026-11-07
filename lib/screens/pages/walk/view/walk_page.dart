@@ -73,15 +73,31 @@ class _WalkPageState extends ConsumerState<WalkPage> {
     super.dispose();
   }
 
-  void _onGpsTimeout() {
-    if (!mounted || _currentPosition != null) return;
+  Future<void> _onGpsTimeout() async {
+    // 記録に使える精度の位置がすでに届いていれば何もしない
+    if (!mounted || ref.read(locationProvider).hasValue) return;
+    final hint = await _gpsTimeoutHint();
+    if (!mounted || ref.read(locationProvider).hasValue) return;
+    final isPreciseOff = hint == AppStrings.gpsTimeoutPreciseOffHint;
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
         title: const Text(AppStrings.gpsTimeoutTitle),
-        content: const Text(AppStrings.gpsTimeoutMessage),
+        content: Text(
+          hint == null
+              ? AppStrings.gpsTimeoutMessage
+              : '${AppStrings.gpsTimeoutMessage}\n\n$hint',
+        ),
         actions: [
+          if (isPreciseOff)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                ref.read(locationServiceProvider).openAppSettings();
+              },
+              child: const Text(AppStrings.gpsOpenSettings),
+            ),
           TextButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
@@ -101,6 +117,18 @@ class _WalkPageState extends ConsumerState<WalkPage> {
         ],
       ),
     );
+  }
+
+  /// 位置を取得できない原因の案内。分からなければ null
+  Future<String?> _gpsTimeoutHint() async {
+    final isPrecise =
+        await ref.read(locationServiceProvider).isPreciseLocationEnabled();
+    if (!isPrecise) return AppStrings.gpsTimeoutPreciseOffHint;
+    // 位置は届いているが精度が足りない（屋内など）
+    if (ref.read(rawLocationProvider).hasValue) {
+      return AppStrings.gpsTimeoutIndoorHint;
+    }
+    return null;
   }
 
   Future<void> _onTakePhotoPressed(
@@ -136,10 +164,15 @@ class _WalkPageState extends ConsumerState<WalkPage> {
   @override
   Widget build(BuildContext context) {
     // エラー時は _GpsStatusIndicator（ref.watch 側）がフィードバックを担う
+    // 記録に使える精度の位置が届いたら、GPS タイムアウトの案内は不要
     ref.listen<AsyncValue<Position>>(locationProvider, (_, next) {
+      if (!next.hasValue) return;
+      _gpsTimeoutTimer?.cancel();
+      _gpsTimeoutTimer = null;
+    });
+    // 現在地の表示には、精度の低い位置も使う（屋内などでも地図を出すため）
+    ref.listen<AsyncValue<Position>>(rawLocationProvider, (_, next) {
       next.whenData((pos) {
-        _gpsTimeoutTimer?.cancel();
-        _gpsTimeoutTimer = null;
         final point = LatLng(pos.latitude, pos.longitude);
         setState(() {
           _currentPosition = point;
@@ -154,12 +187,13 @@ class _WalkPageState extends ConsumerState<WalkPage> {
     });
 
     final locationState = ref.watch(locationProvider);
+    final rawLocationState = ref.watch(rawLocationProvider);
     final timerState = ref.watch(walkTimerProvider);
     final turnSeconds = timerState.turnSecondsLeft;
     final inactSeconds = timerState.inactSecondsLeft;
     // widget state がなくても locationProvider の最新値をフォールバックとして使用
     // → WalkPage 再生成時でもマップが即座に表示される
-    final streamPos = locationState.valueOrNull;
+    final streamPos = rawLocationState.valueOrNull ?? locationState.valueOrNull;
     final mapCenter = _currentPosition ??
         (streamPos != null
             ? LatLng(streamPos.latitude, streamPos.longitude)
@@ -179,7 +213,10 @@ class _WalkPageState extends ConsumerState<WalkPage> {
                 onReset: turnSeconds != null ? _resetTimer : null,
               ),
               const SizedBox(height: AppSpacing.lg),
-              _GpsStatusIndicator(locationState: locationState),
+              _GpsStatusIndicator(
+                locationState: locationState,
+                rawLocationState: rawLocationState,
+              ),
               if (inactSeconds != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(
@@ -455,44 +492,58 @@ class _WalkPageState extends ConsumerState<WalkPage> {
 // ──────────────────────────────────────────
 
 class _GpsStatusIndicator extends StatelessWidget {
-  const _GpsStatusIndicator({required this.locationState});
+  const _GpsStatusIndicator({
+    required this.locationState,
+    required this.rawLocationState,
+  });
 
+  /// ルートの記録に使える精度の位置
   final AsyncValue<Position> locationState;
+
+  /// 精度を問わない位置（記録には使えない誤差の大きい位置も含む）
+  final AsyncValue<Position> rawLocationState;
 
   @override
   Widget build(BuildContext context) {
-    return locationState.when(
-      data: (_) => const SizedBox.shrink(),
-      loading: () => const SizedBox(
-        height: AppSize.gpsIndicatorHeight,
-        child: Center(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: AppSize.gpsSpinnerSize,
-                height: AppSize.gpsSpinnerSize,
-                child: CircularProgressIndicator(
-                  strokeWidth: AppSize.gpsSpinnerStroke,
-                  color: AppColors.primary,
-                ),
-              ),
-              SizedBox(width: AppSpacing.sm),
-              Text(
-                AppStrings.gpsAcquiring,
-                style: TextStyle(color: AppColors.textDisabled),
-              ),
-            ],
-          ),
-        ),
-      ),
-      error: (_, __) => const SizedBox(
+    if (locationState.hasValue) return const SizedBox.shrink();
+    final rawError = rawLocationState.error ?? locationState.error;
+    if (rawError != null) {
+      return const SizedBox(
         height: AppSize.gpsIndicatorHeight,
         child: Center(
           child: Text(
             AppStrings.gpsUnavailableError,
             style: TextStyle(color: AppColors.error),
           ),
+        ),
+      );
+    }
+    final rawPos = rawLocationState.valueOrNull;
+    return SizedBox(
+      height: AppSize.gpsIndicatorHeight,
+      child: Center(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: AppSize.gpsSpinnerSize,
+              height: AppSize.gpsSpinnerSize,
+              child: CircularProgressIndicator(
+                strokeWidth: AppSize.gpsSpinnerStroke,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Flexible(
+              child: Text(
+                rawPos == null
+                    ? AppStrings.gpsAcquiring
+                    : AppStrings.gpsLowAccuracy(rawPos.accuracy.round()),
+                style: const TextStyle(color: AppColors.textDisabled),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
         ),
       ),
     );

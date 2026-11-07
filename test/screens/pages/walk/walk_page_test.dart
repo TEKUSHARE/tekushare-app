@@ -233,10 +233,12 @@ void main() {
     }) async {
       setDisplaySize(tester);
 
+      // 表示用（精度を問わない）と記録用の両方に同じ位置を流す
+      final positions = (locationStream ?? const Stream<Position>.empty())
+          .asBroadcastStream();
       final overrides = <Override>[
-        locationProvider.overrideWith(
-          (ref) => locationStream ?? const Stream.empty(),
-        ),
+        locationProvider.overrideWith((ref) => positions),
+        rawLocationProvider.overrideWith((ref) => positions),
         _notificationOverride,
         _walkSessionRepoOverride,
         _routeRepoOverride,
@@ -379,12 +381,14 @@ void main() {
       setDisplaySize(tester);
 
       final locationStream =
-          Stream<Position>.error(Exception('GPS unavailable'));
+          Stream<Position>.error(Exception('GPS unavailable'))
+              .asBroadcastStream();
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             locationProvider.overrideWith((ref) => locationStream),
+            rawLocationProvider.overrideWith((ref) => locationStream),
             _notificationOverride,
           ],
           child: MaterialApp(
@@ -425,12 +429,14 @@ void main() {
       setDisplaySize(tester);
 
       final locationStream =
-          Stream<Position>.error(Exception('GPS unavailable'));
+          Stream<Position>.error(Exception('GPS unavailable'))
+              .asBroadcastStream();
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             locationProvider.overrideWith((ref) => locationStream),
+            rawLocationProvider.overrideWith((ref) => locationStream),
             _notificationOverride,
           ],
           child: MaterialApp(
@@ -688,6 +694,7 @@ void main() {
         ProviderScope(
           overrides: [
             locationProvider.overrideWith((ref) => const Stream.empty()),
+            rawLocationProvider.overrideWith((ref) => const Stream.empty()),
             _timerEnabledOverride,
             _initializedTimerOverride,
             _notificationOverride,
@@ -719,6 +726,7 @@ void main() {
         ProviderScope(
           overrides: [
             locationProvider.overrideWith((ref) => const Stream.empty()),
+            rawLocationProvider.overrideWith((ref) => const Stream.empty()),
             _timerEnabledOverride,
             _initializedTimerOverride,
             _notificationOverride,
@@ -750,6 +758,7 @@ void main() {
         ProviderScope(
           overrides: [
             locationProvider.overrideWith((ref) => const Stream.empty()),
+            rawLocationProvider.overrideWith((ref) => const Stream.empty()),
             _timerDisabledOverride,
             _notificationOverride,
           ],

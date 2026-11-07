@@ -34,7 +34,13 @@ abstract class AppStrings {
   static const timerRoundTripNotificationBody = 'そろそろ折り返しましょう！';
   static const gpsTimeoutTitle = 'GPS を取得できません';
   static const gpsTimeoutMessage =
-      '30秒経過してもGPSが取得できませんでした。\n散歩をやり直す場合はリトライしてください。';
+      '60秒経っても、ルートの記録に使える精度の位置を取得できませんでした。\n散歩をやり直す場合はリトライしてください。';
+  static const gpsTimeoutIndoorHint = '屋内では位置の精度が下がります。屋外や窓際へ移動すると記録が始まります。';
+  static const gpsTimeoutPreciseOffHint =
+      '「正確な位置情報」がオフになっています。設定でオンにすると記録できるようになります。';
+  static const gpsOpenSettings = '設定を開く';
+  static String gpsLowAccuracy(int meters) =>
+      '位置の精度が低いため記録を待っています（誤差 約${meters}m）';
   static const gpsTimeoutRetry = 'やり直す';
   static const gpsTimeoutContinue = 'このまま続ける';
   static const safetyOk = '元気です';
