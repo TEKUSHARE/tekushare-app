@@ -3,9 +3,9 @@
     "details": [
       {
         "appIDs": [
-          "REPLACE_WITH_TEAM_ID.com.tekushare.app",
-          "REPLACE_WITH_TEAM_ID.com.tekushare.app.dev",
-          "REPLACE_WITH_TEAM_ID.com.tekushare.app.stg"
+          "4N5F9L6BC2.com.tekushare.app",
+          "4N5F9L6BC2.com.tekushare.app.dev",
+          "4N5F9L6BC2.com.tekushare.app.stg"
         ],
         "components": [
           { "/": "/auth/action*", "comment": "Firebase Auth action links via custom path" },
