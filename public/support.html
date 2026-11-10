@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>サポート | てくしぇあ</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f8f8f8;
+      --text: #1a1a1a;
+      --text-sub: #555555;
+      --accent: #3d8c6e;
+      --border: #e0e0e0;
+      --font: 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Meiryo', sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111111;
+        --surface: #1e1e1e;
+        --text: #f0f0f0;
+        --text-sub: #aaaaaa;
+        --border: #333333;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #111111;
+      --surface: #1e1e1e;
+      --text: #f0f0f0;
+      --text-sub: #aaaaaa;
+      --border: #333333;
+    }
+    :root[data-theme="light"] {
+      --bg: #ffffff;
+      --surface: #f8f8f8;
+      --text: #1a1a1a;
+      --text-sub: #555555;
+      --border: #e0e0e0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.8;
+    }
+    header {
+      background: var(--accent);
+      color: #fff;
+      padding: 32px 24px;
+      text-align: center;
+    }
+    header h1 { font-size: 22px; font-weight: bold; }
+    header p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+    section { margin-bottom: 40px; }
+    h2 {
+      font-size: 17px;
+      font-weight: bold;
+      color: var(--accent);
+      border-left: 4px solid var(--accent);
+      padding-left: 12px;
+      margin-bottom: 16px;
+    }
+    p { color: var(--text); margin-bottom: 12px; }
+    ul {
+      padding-left: 20px;
+      margin-bottom: 12px;
+    }
+    ul li { margin-bottom: 6px; color: var(--text); }
+    .note {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-size: 14px;
+      color: var(--text-sub);
+    }
+    footer {
+      text-align: center;
+      padding: 24px;
+      font-size: 13px;
+      color: var(--text-sub);
+      border-top: 1px solid var(--border);
+    }
+    h3 { font-size: 15px; font-weight: bold; margin: 20px 0 6px; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>サポート</h1>
+  <p>てくしぇあ（TekuShare）</p>
+</header>
+
+<main>
+  <section>
+    <p>てくしぇあをご利用いただきありがとうございます。よくあるご質問と、お問い合わせ先をまとめています。</p>
+  </section>
+
+  <section>
+    <h2>よくあるご質問</h2>
+
+    <h3>散歩中に「GPS取得中」のまま記録が始まりません</h3>
+    <p>屋内や高い建物の近くでは、位置の誤差が大きいため記録を待つことがあります。屋外の空が開けた場所で少しお待ちください。iPhone の場合は「設定」→「プライバシーとセキュリティ」→「位置情報サービス」→「てくしぇあ」で、「正確な位置情報」をオンにしてください。</p>
+
+    <h3>画面を消すとルートが記録されません</h3>
+    <p>位置情報の許可を「常に」にしてください。iPhone は「設定」→「てくしぇあ」→「位置情報」、Android は「設定」→「アプリ」→「てくしぇあ」→「権限」→「位置情報」から変更できます。</p>
+
+    <h3>家族やパートナーと連携するには</h3>
+    <p>アプリの「設定」→「シェア」から共有リンクを送り、相手がそのリンクを開くと連携できます。お互いの端末にアプリを入れておく必要があります。</p>
+
+    <h3>安否確認の通知はどのように届きますか</h3>
+    <p>散歩中にしばらく動きがないと「元気です」の確認が表示されます。応答がないときは、連携している相手にプッシュ通知でお知らせします。Android では、登録した電話番号に SMS も送れます。</p>
+
+    <h3>パスワードを忘れました</h3>
+    <p>ログイン画面の「パスワードを忘れた方はこちら」から、登録したメールアドレスに再設定のメールを送れます。</p>
+
+    <h3>アカウントを消去したい</h3>
+    <p>アプリの「設定」→「アカウントを消去」から消去できます。アカウント・スポット・写真・連携の情報などのサーバー上のデータと、端末内の散歩ルート・設定が削除されます。この操作は取り消せません。</p>
+  </section>
+
+  <section>
+    <h2>お問い合わせ</h2>
+    <p>不具合のご報告やご質問は、以下のメールアドレスまでお送りください。お使いの端末（機種と OS のバージョン）と、起きたことを書いていただけると、早く対応できます。</p>
+    <div class="note">メールアドレス：<a href="mailto:kinnotarakame@gmail.com">kinnotarakame@gmail.com</a></div>
+  </section>
+
+  <section>
+    <h2>関連ページ</h2>
+    <ul>
+      <li><a href="/privacy.html">プライバシーポリシー</a></li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  &copy; 2026 てくしぇあ（TekuShare）
+</footer>
+
+</body>
+</html>
