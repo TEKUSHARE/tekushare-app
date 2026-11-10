@@ -17,6 +17,7 @@
 | [環境構築手順](docs/環境構築手順.md) | 新規セットアップ手順 |
 | [テスト方針](docs/テスト方針.md) / [テスト一覧](docs/テスト一覧.md) | テスト方針と既存テストの一覧 |
 | [Androidリリースチェックリスト](docs/android_release_checklist.md) | リリース前確認事項 |
+| [iOSリリースチェックリスト](docs/ios_release_checklist.md) | App Store への提出手順・掲載情報・審査メモ |
 
 コードを書く前に必ず[コード規約](docs/コード規約.md)を確認する。
 
